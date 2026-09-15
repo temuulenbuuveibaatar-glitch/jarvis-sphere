@@ -65,11 +65,11 @@ JARVIS calls Voicebox's local `/speak` endpoint. Voicebox owns the profile, pers
 
 - Type a message and press Enter; Shift+Enter inserts a newline. Clear resets in-memory conversation. During a request, Clear cancels it.
 - Start voice control once to authorize browser microphone access. Then say “Jarvis, wake up” (or “Hey Jarvis”) or clap twice; JARVIS waits for the command, sends it automatically, reads its reply aloud, and returns to wake listening. Stop voice control or press Escape to end it. Wake words use the browser recognizer; clap detection is local to the tab.
-- Enable air touch explicitly requests the webcam. The first detected hand's palm center moves the pointer and a thumb/index pinch held for 180 ms selects. A second hand is accepted without interrupting tracking; when desktop control is armed, it scrolls.
-- Arm desktop control only after air touch is active. It moves the Windows pointer across the virtual desktop, clicks with the first-hand pinch, and scrolls with the second hand. It is off by default, stops when the camera stops or the page is hidden, and Escape disarms it. It has no keyboard, shell, file, or application-launch capability.
+- Enable air touch explicitly requests the webcam. Pinch and move one hand to rotate the sphere. Use two hands to zoom it. It only operates the sphere; it does not move the desktop pointer.
 - Escape stops sensors and speech. Hiding the page stops camera processing. The camera is off on every page load.
 - Air touch uses a 480×360 ideal camera feed, up to two hands, 15 FPS by default, adaptive pointer smoothing, and worker inference. Low-power mode reduces processing to 8 FPS. These are caps, not guaranteed measured performance on an old machine.
-- The bundled web app is installable from Chrome or Edge on Windows and Chrome or Safari on macOS through the browser's install/add-to-dock control. It avoids a separate Electron runtime; Hermes still needs to be installed where you run the local server.
+- Windows and macOS can install the local app through Chrome or Edge's Install control, or Safari's Add to Dock. `open_app` uses the native launcher on Windows, macOS, and Linux; macOS accepts an existing `.app` bundle. Hermes and Python must be installed locally, and macOS users set `JARVIS_PYTHON` and `HERMES_HOME` to their local locations.
+- On iPhone and Android, the PWA interface can be installed from Safari's Share > Add to Home Screen or Chrome's Install app. Full chat and Computer-console actions still need a reachable JARVIS server: a phone cannot use a desktop's `127.0.0.1` address. Camera and speech behavior remains browser- and device-dependent.
 - Notes use browser localStorage and are not encrypted. Chat history is kept in page memory; the AI provider and Hermes runtime may have their own logging policies.
 
 ## Verification
@@ -97,4 +97,4 @@ This server is for a single trusted OS account and binds to 127.0.0.1. Do not ex
 
 Camera frames remain in the browser worker. Chat text crosses to the configured model provider. The server bounds input, output, request concurrency, and child lifetime. The code and tests cannot guarantee a vulnerability-free system; browser, model binary, Hermes dependencies, and upstream provider internals require separate assessment.
 
-The desktop pointer companion accepts only a small JSON protocol from the localhost server: normalized cursor movement, one primary click, bounded scroll, and disarm. It cannot accept shell commands or key presses.
+The legacy desktop pointer companion is Windows-only and is not exposed in the current sphere-only interface. It accepts only a small JSON protocol: normalized cursor movement, one primary click, bounded scroll, and disarm. It cannot accept shell commands or key presses.

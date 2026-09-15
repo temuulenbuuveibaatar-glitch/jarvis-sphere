@@ -73,6 +73,7 @@ async function voiceboxSpeak(text) {
   if (!response.ok) throw new Error('Voicebox did not accept the speech request.');
 }
 function startDesktopCompanion() {
+  if (process.platform !== 'win32') return { ready: false, send() {} };
   const child = spawn(desktopPython, [path.join(root, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
   const companion = { ready: false, send(action) { if (child.exitCode === null && companion.ready) child.stdin.write(`${JSON.stringify(action)}\n`); } };
   child.stdout.on('data', chunk => { if (chunk.toString('utf8').includes('"ready":true')) companion.ready = true; });

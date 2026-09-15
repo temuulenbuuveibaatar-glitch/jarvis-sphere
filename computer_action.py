@@ -18,8 +18,11 @@ def run(action):
         webbrowser.open(url); return {'message': 'Opening link in your default browser.'}
     if kind == 'open_app':
         target = Path(action.get('path', '')).expanduser().resolve()
-        if not target.is_file(): fail('Choose an existing application file.')
-        os.startfile(str(target)); return {'message': f'Opening {target.name}.'}
+        if not target.exists(): fail('Choose an existing application path.')
+        if os.name == 'nt': os.startfile(str(target))
+        elif sys.platform == 'darwin': subprocess.Popen(['open', str(target)])
+        else: subprocess.Popen(['xdg-open', str(target)])
+        return {'message': f'Opening {target.name}.'}
     if kind == 'download':
         url, name = action.get('url', ''), action.get('name', '')
         if urlparse(url).scheme not in ('http', 'https') or not name or Path(name).name != name: fail('Use an http(s) link and a simple file name.')

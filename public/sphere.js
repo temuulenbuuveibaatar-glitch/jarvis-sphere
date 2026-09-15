@@ -18,6 +18,11 @@ function selectAt(clientX, clientY) {
   }
   if (nearest) window.dispatchEvent(new CustomEvent('sphere-dot-select', { detail: { index: nearest.index, category: nearest.category } }));
 }
+function preview() {
+  let front;
+  for (const point of points) if (!front || point.depth > front.depth) front = point;
+  if (front) window.dispatchEvent(new CustomEvent('sphere-preview', { detail: { index: front.index, category: front.category } }));
+}
 function draw(time) {
   const low = document.body.classList.contains('low-power');
   if (document.hidden || time - previous < (low ? 66 : 30)) return requestAnimationFrame(draw);
@@ -38,6 +43,7 @@ function draw(time) {
   requestAnimationFrame(draw);
 }
 canvas.addEventListener('click', event => selectAt(event.clientX, event.clientY));
+canvas.addEventListener('wheel', event => { event.preventDefault(); userZoom = Math.max(.72, Math.min(1.32, userZoom - event.deltaY * .001)); if (userZoom > 1.04) preview(); }, { passive: false });
 canvas.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); const rect = canvas.getBoundingClientRect(); selectAt(rect.left + rect.width / 2, rect.top + rect.height / 2); } });
 window.jarvisSphere = { selectAt, drag(dx, dy) { userYaw += dx; userTilt = Math.max(-.7, Math.min(.7, userTilt + dy)); }, zoom(delta) { userZoom = Math.max(.72, Math.min(1.32, userZoom + delta)); } };
 requestAnimationFrame(draw);

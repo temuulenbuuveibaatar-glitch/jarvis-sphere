@@ -5,6 +5,7 @@ A local personal assistant with an original particle-sphere interface, Hermes ch
 ## What it does
 
 - Select any visible sphere particle to open a current briefing from World, China, engineering, aircraft, or market feeds. Each panel shows the publisher, source time, refresh time, and original link.
+- Scroll over the sphere to zoom. When zoomed in, JARVIS shows a source-linked briefing preview; market particles include a current intraday Dow Jones line chart from Yahoo Finance.
 - Say “Jarvis, wake up” or clap twice after starting voice control. JARVIS responds in the browser voice or an optional local Voicebox profile.
 - Use one pinched hand to rotate the sphere and two hands to zoom it. Camera inference stays in the browser.
 - Use the Computer console to open a website or local app, download a file to Downloads, find files under the current user's home folder, or run an explicit command. Every action has an exact review-and-confirm screen. Commands run without a shell.
@@ -24,6 +25,12 @@ Open http://127.0.0.1:4317. Node.js 22+ and a current Chromium browser are recom
 To install it as an app after it is running, open the address in Chrome or Edge and choose **Install JARVIS** from the browser menu. The local server and Hermes remain required because they provide the AI bridge and local computer-action boundary.
 
 Chat needs the existing configured AI provider to be available. The local UI does not imply offline model inference. Capacity errors and timeouts produce a retryable failure. The bridge has no enabled tools, skips workspace instructions and memory, and disables Hermes plugins through safe mode. It is a conversational assistant, not an unrestricted operating-system agent.
+
+## Download the desktop app
+
+GitHub Releases contains the downloadable installers: Windows uses an `.exe` installer and macOS uses a `.dmg`. Each release tag triggers builds on Windows and macOS runners, so users download the file for their operating system instead of a web app. On first run, configure a provider on that computer as described below; the installer contains no API keys, model credentials, or shared defaults.
+
+For local development, `npm run desktop` launches the desktop shell. `npm run dist` makes the installer for the current operating system. macOS Gatekeeper warnings remain possible until the project is signed and notarized with the repository owner's Apple Developer certificate.
 
 ## Provider connection
 
@@ -49,6 +56,8 @@ $env:GEMINI_API_KEY = '...'
 ```
 
 Restart `npm start` after changing provider variables. The header identifies the selected bridge but never exposes a model name or credential. `G0DM0DƎ` is available locally as a visual tool; it is not a documented model-provider API, so it is not used as a chat backend.
+
+For a downloaded desktop app, set the same variables in the environment before launching it. Windows users can set them in User Environment Variables. macOS users can set them in the shell or a launch configuration. The app never asks users to paste API keys into the interface.
 
 ## Voicebox voice
 

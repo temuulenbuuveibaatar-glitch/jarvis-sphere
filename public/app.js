@@ -194,6 +194,16 @@ async function openBriefing({ index, category }) {
   } catch { $('briefing-title').textContent = 'Briefing unavailable'; $('briefing-summary').textContent = 'This source could not be refreshed. Select another particle or try again shortly.'; }
 }
 window.addEventListener('sphere-dot-select', event => openBriefing(event.detail));
+async function showPreview({ index, category }) {
+  const preview = $('briefing-preview'); preview.hidden = false; $('preview-category').textContent = `${category} / ZOOM PREVIEW`; $('preview-title').textContent = 'Loading current briefing…'; $('preview-meta').textContent = ''; $('market-chart').hidden = true;
+  try {
+    if (!briefingFeeds) { const response = await fetch('/api/briefings'); if (!response.ok) throw new Error(); briefingFeeds = (await response.json()).feeds; }
+    const feed = briefingFeeds.find(item => item.category === category), item = feed?.items[index % Math.max(1, feed.items.length)]; if (!item) throw new Error();
+    $('preview-title').textContent = item.title; $('preview-meta').textContent = `${feed.source} · ${item.published ? new Date(item.published).toLocaleString() : 'time not supplied'}`;
+    if (category === 'MARKETS') { const market = await (await fetch('/api/markets')).json(), values = market.values; if (values?.length) { const low = Math.min(...values), range = Math.max(1e-8, Math.max(...values) - low); $('market-line').setAttribute('points', values.map((value, point) => `${point * 240 / (values.length - 1)},${68 - (value - low) / range * 64}`).join(' ')); $('market-chart').hidden = false; $('preview-meta').textContent = `${market.symbol} · ${market.currency} · ${new Date(market.fetchedAt).toLocaleTimeString()}`; } }
+  } catch { $('preview-title').textContent = 'Briefing preview unavailable'; }
+}
+window.addEventListener('sphere-preview', event => showPreview(event.detail));
 $('close-briefing').onclick = () => $('briefing-dialog').close();
 let pendingComputerAction;
 function computerFields() {

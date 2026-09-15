@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
+const helperRoot = process.resourcesPath && existsSync(path.join(process.resourcesPath, 'app.asar.unpacked', 'computer_action.py')) ? path.join(process.resourcesPath, 'app.asar.unpacked') : root;
 const publicRoot = path.join(root, 'public');
 const python = process.env.JARVIS_PYTHON || 'C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe';
 const desktopPython = process.env.JARVIS_DESKTOP_PYTHON || python;
@@ -21,6 +22,7 @@ const briefingSources = [
   { category: 'MARKETS', source: 'Yahoo Finance', url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EDJI,GC%3DF,CL%3DF,BTC-USD&region=US&lang=en-US' },
 ];
 let briefingCache = { expires: 0, data: null };
+let marketCache = { expires: 0, data: null };
 function xmlText(value = '') { return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim(); }
 function xmlTag(item, name) { return xmlText(item.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i'))?.[1] || ''); }
 async function briefingFeed(feed) {
@@ -37,6 +39,16 @@ async function briefings() {
   const data = await Promise.all(briefingSources.map(briefingFeed));
   briefingCache = { data, expires: Date.now() + 5 * 60_000 };
   return data;
+}
+async function marketSnapshot() {
+  if (marketCache.data && marketCache.expires > Date.now()) return marketCache.data;
+  try {
+    const response = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?range=1d&interval=5m', { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'JARVIS-local/1.0' } });
+    const result = (await response.json()).chart?.result?.[0], values = result?.indicators?.quote?.[0]?.close?.filter(Number.isFinite) || [];
+    if (values.length < 2) throw new Error();
+    marketCache = { data: { symbol: result.meta?.symbol || '^DJI', currency: result.meta?.currency || 'USD', values, fetchedAt: new Date().toISOString() }, expires: Date.now() + 5 * 60_000 };
+  } catch { marketCache = { data: { unavailable: true, fetchedAt: new Date().toISOString() }, expires: Date.now() + 60_000 }; }
+  return marketCache.data;
 }
 export function validMessages(value) {
   return Array.isArray(value) && value.length > 0 && value.length <= 16 && value.every(m => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string' && m.content.trim().length > 0 && m.content.length <= 6000) && value.at(-1).role === 'user';
@@ -60,7 +72,7 @@ export function validComputerAction(value) {
 }
 function computerAction(action) {
   return new Promise((resolve, reject) => {
-    const child = spawn(desktopPython, [path.join(root, 'computer_action.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+    const child = spawn(desktopPython, [path.join(helperRoot, 'computer_action.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
     const output = []; const timer = setTimeout(() => child.kill(), 65000);
     child.stdout.on('data', chunk => output.push(chunk)); child.on('error', reject); child.on('close', code => { clearTimeout(timer); try { const result = JSON.parse(Buffer.concat(output).toString('utf8')); if (code !== 0 || result.error) throw new Error(result.error || 'Action failed.'); resolve(result); } catch (error) { reject(error); } });
     child.stdin.end(JSON.stringify(action));
@@ -74,7 +86,7 @@ async function voiceboxSpeak(text) {
 }
 function startDesktopCompanion() {
   if (process.platform !== 'win32') return { ready: false, send() {} };
-  const child = spawn(desktopPython, [path.join(root, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn(desktopPython, [path.join(helperRoot, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
   const companion = { ready: false, send(action) { if (child.exitCode === null && companion.ready) child.stdin.write(`${JSON.stringify(action)}\n`); } };
   child.stdout.on('data', chunk => { if (chunk.toString('utf8').includes('"ready":true')) companion.ready = true; });
   child.stdin.on('error', () => {});
@@ -82,7 +94,7 @@ function startDesktopCompanion() {
 }
 export function hermesReply(messages, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, [path.join(root, 'hermes_bridge.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
+    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
     const output = []; let bytes = 0;
     const kill = () => child.kill();
     signal?.addEventListener('abort', kill, { once: true });
@@ -128,6 +140,7 @@ export function createServer({ reply = hermesReply, desktop = startDesktopCompan
       return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });
+    if (req.method === 'GET' && pathname === '/api/markets') return send(200, await marketSnapshot());
     if (req.method === 'GET' && pathname === '/api/status') return send(200, { platform: os.platform(), cores: os.cpus().length, memoryTotal: os.totalmem(), memoryFree: os.freemem(), uptime: Math.floor(process.uptime()) });
     if (req.method === 'POST' && pathname === '/api/chat') {
       const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));

@@ -28,7 +28,7 @@ Chat needs the existing configured AI provider to be available. The local UI doe
 
 ## Download the desktop app
 
-GitHub Releases contains the downloadable installers: Windows uses an `.exe` installer and macOS uses a `.dmg` when the macOS release job is available. The repository includes Windows and macOS release jobs, but the current GitHub Actions account is not allocating runner jobs; version 1.0.0 therefore contains the locally verified Windows installer only. On first run, configure a provider on that computer as described below; the installer contains no API keys, model credentials, or shared defaults.
+GitHub Releases contains the downloadable installers: Windows uses an `.exe` installer and macOS uses an unsigned `.app` inside a ZIP. Move the extracted app to Applications, then use Finder's right-click > Open on its first launch. It does not require an Apple Developer certificate. On first run, configure a provider on that computer as described below; the installer contains no API keys, model credentials, or shared defaults.
 
 For local development, `npm run desktop` launches the desktop shell. `npm run dist` makes the installer for the current operating system. macOS Gatekeeper warnings remain possible until the project is signed and notarized with the repository owner's Apple Developer certificate.
 

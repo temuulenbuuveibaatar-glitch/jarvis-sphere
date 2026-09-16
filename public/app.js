@@ -5,6 +5,20 @@ let session, history = [], sending = false, controller, speechEnabled = false, v
 let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = false, frameTimer, workerReady = false, pinchStarted = 0, latched = false, hover, smooth, primaryHand, sphereHand, sphereSpan, desktopArmed = false, desktopGeneration = 0, desktopLast = 0, scrollAnchor;
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
+const sphereTheme = document.querySelector('link[href^="/sphere.css"]');
+const uiMode = document.createElement('button');
+uiMode.id = 'ui-mode'; uiMode.className = 'text-button'; uiMode.type = 'button'; uiMode.setAttribute('aria-label', 'Switch interface mode');
+document.querySelector('.header-right')?.insertBefore(uiMode, $('fullscreen'));
+function setUiMode(mode, persist = true) {
+  const sphere = mode !== 'command';
+  if (sphereTheme) sphereTheme.disabled = !sphere;
+  document.body.dataset.uiMode = sphere ? 'sphere' : 'command';
+  uiMode.textContent = sphere ? 'COMMAND UI' : 'SPHERE UI';
+  uiMode.setAttribute('aria-pressed', String(!sphere));
+  if (persist) writeLocal('jarvis.ui-mode', sphere ? 'sphere' : 'command');
+}
+uiMode.onclick = () => setUiMode(document.body.dataset.uiMode === 'sphere' ? 'command' : 'sphere');
+setUiMode(readLocal('jarvis.ui-mode') || 'sphere', false);
 function message(role, text, error = false) {
   const article = document.createElement('article'); article.className = `message ${role}${error ? ' error' : ''}`;
   const label = document.createElement('span'); label.className = 'message-label'; label.textContent = role === 'user' ? 'YOU' : 'JARVIS';
@@ -12,7 +26,7 @@ function message(role, text, error = false) {
   article.append(label, content); $('messages').append(article); article.scrollIntoView({ block: 'nearest' });
 }
 async function connect() {
-  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; }
+  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) $('core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; }
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();

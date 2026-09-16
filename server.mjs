@@ -136,6 +136,7 @@ export function createServer({ reply = hermesReply, desktop = startDesktopCompan
           ? Boolean(process.env.OMNIROUTE_API_KEY)
         : provider === 'openrouter'
           ? Boolean(process.env.OPENROUTER_API_KEY && process.env.JARVIS_OPENROUTER_MODEL)
+          : provider === 'bytez' ? Boolean(process.env.BYTEZ_API_KEY && process.env.JARVIS_BYTEZ_MODEL)
           : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY) : false;
       return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }

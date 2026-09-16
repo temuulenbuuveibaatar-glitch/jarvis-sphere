@@ -101,6 +101,24 @@ def omniroute_reply(messages):
         fail("OmniRoute returned no assistant text")
     return reply
 
+def bytez_reply(messages):
+    key = os.environ.get("BYTEZ_API_KEY")
+    model = os.environ.get("JARVIS_BYTEZ_MODEL")
+    if not key or not model:
+        fail("Bytez is not configured")
+    result = post_json(
+        "https://api.bytez.com/models/v2/openai/v1/chat/completions",
+        {"Authorization": key, "Content-Type": "application/json"},
+        {"model": model, "messages": [{"role": "system", "content": SYSTEM_MESSAGE}, *messages], "max_tokens": 1200},
+    )
+    try:
+        reply = result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        fail("Bytez returned no assistant text")
+    if not isinstance(reply, str) or not reply.strip():
+        fail("Bytez returned no assistant text")
+    return reply
+
 def gemini_reply(messages):
     key = os.environ.get("GEMINI_API_KEY")
     model = os.environ.get("JARVIS_GEMINI_MODEL", "gemini-2.5-flash-lite")
@@ -134,6 +152,8 @@ def main():
             reply = omniroute_reply(payload["messages"])
         elif provider == "openrouter":
             reply = openrouter_reply(payload["messages"])
+        elif provider == "bytez":
+            reply = bytez_reply(payload["messages"])
         elif provider == "gemini":
             reply = gemini_reply(payload["messages"])
         else:

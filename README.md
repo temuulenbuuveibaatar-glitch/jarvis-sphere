@@ -49,6 +49,11 @@ $env:JARVIS_PROVIDER = 'openrouter'
 $env:OPENROUTER_API_KEY = '...'
 $env:JARVIS_OPENROUTER_MODEL = 'provider/model-name'
 
+# Bytez: use a model ID available to your own account.
+$env:JARVIS_PROVIDER = 'bytez'
+$env:BYTEZ_API_KEY = '...'
+$env:JARVIS_BYTEZ_MODEL = 'Qwen/Qwen3-4B'
+
 # Gemini: the default model is gemini-2.5-flash-lite.
 $env:JARVIS_PROVIDER = 'gemini'
 $env:GEMINI_API_KEY = '...'

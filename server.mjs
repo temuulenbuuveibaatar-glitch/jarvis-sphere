@@ -96,6 +96,7 @@ function startDesktopCompanion() {
   const child = spawn(desktopPython, [path.join(helperRoot, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
   const companion = { ready: false, send(action) { if (child.exitCode === null && companion.ready) child.stdin.write(`${JSON.stringify(action)}\n`); } };
   child.stdout.on('data', chunk => { if (chunk.toString('utf8').includes('"ready":true')) companion.ready = true; });
+  child.on('error', () => { companion.ready = false; });
   child.stdin.on('error', () => {});
   return companion;
 }

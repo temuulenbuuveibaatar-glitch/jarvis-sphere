@@ -28,7 +28,7 @@ async function send(event) {
   try {
     const request = () => fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ messages: pending }), signal: controller.signal });
     let response = await request();
-    if (response.status === 503) { $('chat-status').textContent = `Reconnecting to ${$('provider-name').textContent}…`; await new Promise(resolve => setTimeout(resolve, 900)); response = await request(); }
+    if (response.status === 503) { $('chat-status').textContent = `Reconnecting to ${$('provider-name').textContent}…`; await new Promise(resolve => setTimeout(resolve, 1100)); response = await request(); }
     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.');
     history = [...pending, { role: 'assistant', content: data.reply.slice(0, 6000) }].slice(-14); message('assistant', data.reply); $('chat-status').textContent = `${$('provider-name').textContent} connected`;
     if (await speakReply(data.reply)) { voiceMode = false; $('chat-status').textContent = 'Voicebox is speaking. Start voice control when you are ready to listen again.'; }

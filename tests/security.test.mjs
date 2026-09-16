@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createServer, validMessages, allowedHost, validDesktopAction, validComputerAction } from '../server.mjs';
+import { bytezReply, createServer, validMessages, allowedHost, validDesktopAction, validComputerAction } from '../server.mjs';
 import { gestureFromLandmarks, gesturesFromHands } from '../public/gestures.js';
 
 test('conversation boundary rejects injected roles and oversized input', () => {
@@ -16,6 +16,18 @@ test('conversation boundary rejects injected roles and oversized input', () => {
   assert.equal(validComputerAction({ action: 'open_url', url: 'file:///secret' }), false);
   assert.equal(validComputerAction({ action: 'run_command', command: ['git', 'status'] }), true);
   assert.equal(validComputerAction({ action: 'run_command', command: 'git status' }), false);
+});
+test('Bytez uses the native request path without a Python runtime', async () => {
+  const fetchBefore = globalThis.fetch, keyBefore = process.env.BYTEZ_API_KEY, modelBefore = process.env.JARVIS_BYTEZ_MODEL;
+  process.env.BYTEZ_API_KEY = 'test-key'; process.env.JARVIS_BYTEZ_MODEL = 'test-model';
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, 'https://api.bytez.com/models/v2/openai/v1/chat/completions');
+    assert.equal(options.headers.Authorization, 'test-key');
+    assert.equal(JSON.parse(options.body).model, 'test-model');
+    return { ok: true, json: async () => ({ choices: [{ message: { content: 'Ready.' } }] }) };
+  };
+  try { assert.equal(await bytezReply([{ role: 'user', content: 'Hello' }]), 'Ready.'); }
+  finally { globalThis.fetch = fetchBefore; if (keyBefore === undefined) delete process.env.BYTEZ_API_KEY; else process.env.BYTEZ_API_KEY = keyBefore; if (modelBefore === undefined) delete process.env.JARVIS_BYTEZ_MODEL; else process.env.JARVIS_BYTEZ_MODEL = modelBefore; }
 });
 test('live HTTP protections and concurrent request lock', async () => {
   let calls = 0, release;

@@ -13,6 +13,7 @@ const publicRoot = path.join(root, 'public');
 const python = process.env.JARVIS_PYTHON || 'C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe';
 const desktopPython = process.env.JARVIS_DESKTOP_PYTHON || python;
 const token = randomBytes(32).toString('hex');
+const assistantSystem = "You are JARVIS, a professional, deeply caring personal assistant. Help with explanations, writing, planning, and brainstorming from incomplete clues. When the user is trying to remember something, ask concise clarifying questions and offer grounded possibilities without pretending certainty. You have no computer, file, camera, microphone, web or command access. Never claim to have performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty.";
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.task': 'application/octet-stream', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const briefingSources = [
   { category: 'WORLD', source: 'BBC News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
@@ -76,6 +77,7 @@ export function validComputerAction(value) {
   return value.action === 'run_command' && Object.keys(value).sort().join(',') === 'action,command' && Array.isArray(value.command) && value.command.length > 0 && value.command.length <= 12 && value.command.every(part => typeof part === 'string' && part.length > 0 && part.length <= 512);
 }
 function computerAction(action) {
+  if (!existsSync(desktopPython)) return Promise.reject(new Error('Computer actions need a configured Python runtime.'));
   return new Promise((resolve, reject) => {
     const child = spawn(desktopPython, [path.join(helperRoot, 'computer_action.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
     const output = []; const timer = setTimeout(() => child.kill(), 65000);
@@ -90,7 +92,7 @@ async function voiceboxSpeak(text) {
   if (!response.ok) throw new Error('Voicebox did not accept the speech request.');
 }
 function startDesktopCompanion() {
-  if (process.platform !== 'win32') return { ready: false, send() {} };
+  if (process.platform !== 'win32' || !existsSync(desktopPython)) return { ready: false, send() {} };
   const child = spawn(desktopPython, [path.join(helperRoot, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
   const companion = { ready: false, send(action) { if (child.exitCode === null && companion.ready) child.stdin.write(`${JSON.stringify(action)}\n`); } };
   child.stdout.on('data', chunk => { if (chunk.toString('utf8').includes('"ready":true')) companion.ready = true; });
@@ -117,7 +119,26 @@ export function hermesReply(messages, signal) {
     child.stdin.end(JSON.stringify({ messages }));
   });
 }
-export function createServer({ reply = hermesReply, desktop = startDesktopCompanion() } = {}) {
+export async function bytezReply(messages, signal) {
+  const key = process.env.BYTEZ_API_KEY, model = process.env.JARVIS_BYTEZ_MODEL;
+  if (!key || !model) throw new Error('Bytez is not configured.');
+  const timeout = AbortSignal.timeout(75000);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true }); timeout.addEventListener('abort', abort, { once: true });
+  try {
+    const response = await fetch('https://api.bytez.com/models/v2/openai/v1/chat/completions', {
+      method: 'POST', headers: { Authorization: key, 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ model, messages: [{ role: 'system', content: assistantSystem }, ...messages], max_tokens: 1200 }),
+    });
+    if (!response.ok) throw new Error('Bytez did not complete the request.');
+    const reply = (await response.json()).choices?.[0]?.message?.content;
+    if (typeof reply !== 'string' || !reply.trim()) throw new Error('Bytez returned no assistant text.');
+    return reply;
+  } finally { signal?.removeEventListener('abort', abort); timeout.removeEventListener('abort', abort); }
+}
+function providerReply(messages, signal) { return (process.env.JARVIS_PROVIDER || 'hermes').toLowerCase() === 'bytez' ? bytezReply(messages, signal) : hermesReply(messages, signal); }
+export function createServer({ reply = providerReply, desktop = startDesktopCompanion() } = {}) {
   let busy = false, lastRequest = 0, desktopArmed = false, desktopGeneration = 0;
   return http.createServer(async (req, res) => {
     const port = req.socket.localPort;

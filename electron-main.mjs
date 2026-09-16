@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell, session } from 'electron';
 import { createServer } from './server.mjs';
 
 let server;
@@ -15,7 +15,13 @@ async function createWindow() {
   window.webContents.on('will-navigate', event => event.preventDefault());
   await window.loadURL(`http://127.0.0.1:${port}`);
 }
-app.whenReady().then(createWindow).catch(error => { console.error(error); app.quit(); });
+app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    try { callback(permission === 'media' && new URL(webContents.getURL()).hostname === '127.0.0.1'); }
+    catch { callback(false); }
+  });
+  await createWindow();
+}).catch(error => { console.error(error); app.quit(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 app.on('before-quit', () => server?.close());

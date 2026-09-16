@@ -27,7 +27,7 @@ function draw(time) {
   const low = document.body.classList.contains('low-power');
   if (document.hidden || time - previous < (low ? 66 : 30)) return requestAnimationFrame(draw);
   previous = time;
-  const size = canvas.clientWidth, dpr = Math.min(devicePixelRatio || 1, 1.5);
+  const size = Math.max(1, canvas.clientWidth, canvas.parentElement?.clientWidth || 0), dpr = Math.min(devicePixelRatio || 1, 1.5);
   if (canvas.width !== Math.round(size * dpr)) canvas.width = canvas.height = Math.round(size * dpr);
   context.setTransform(dpr, 0, 0, dpr, 0, 0); context.fillStyle = '#030609'; context.fillRect(0, 0, size, size);
   const t = reduced.matches ? 0 : time * .00012, yaw = t + userYaw, cosine = Math.cos(yaw), sine = Math.sin(yaw), tiltCosine = Math.cos(userTilt), tiltSine = Math.sin(userTilt), active = document.getElementById('reactor').classList.contains('thinking'), radius = size * .385 * userZoom, middle = size / 2;

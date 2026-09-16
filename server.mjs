@@ -50,6 +50,11 @@ async function marketSnapshot() {
   } catch { marketCache = { data: { unavailable: true, fetchedAt: new Date().toISOString() }, expires: Date.now() + 60_000 }; }
   return marketCache.data;
 }
+async function intelligenceContext() {
+  const feeds = await briefings();
+  const lines = feeds.flatMap(feed => feed.items.slice(0, 3).map(item => `${feed.category} | ${feed.source} | ${item.title} | ${item.summary.slice(0, 280)} | ${item.link}`));
+  return { role: 'system', content: `Current public-source briefings, retrieved by JARVIS at ${new Date().toISOString()}:\n${lines.join('\n')}\nUse only this supplied context for current-event claims. Name the publisher and state uncertainty where coverage is incomplete.` };
+}
 export function validMessages(value) {
   return Array.isArray(value) && value.length > 0 && value.length <= 16 && value.every(m => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string' && m.content.trim().length > 0 && m.content.length <= 6000) && value.at(-1).role === 'user';
 }
@@ -158,7 +163,7 @@ export function createServer({ reply = hermesReply, desktop = startDesktopCompan
         const controller = new AbortController();
         const cancel = () => { if (!res.writableEnded) controller.abort(); };
         res.on('close', cancel);
-        try { const answer = await reply(data.messages, controller.signal); if (!res.destroyed) send(200, { reply: answer }); }
+        try { const asksForIntelligence = /\b(news|world|china|engineering|aircraft|aviation|market|finance|briefing)\b/i.test(data.messages.at(-1).content); const answer = await reply(asksForIntelligence ? [await intelligenceContext(), ...data.messages] : data.messages, controller.signal); if (!res.destroyed) send(200, { reply: answer }); }
         catch { if (!res.destroyed) send(503, { error: 'AI provider is unavailable or timed out. Check its local configuration, then retry.' }); }
         finally { busy = false; res.off('close', cancel); }
       } catch { if (!res.headersSent) send(400, { error: 'Invalid request.' }); }

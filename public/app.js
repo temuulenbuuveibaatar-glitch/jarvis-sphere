@@ -177,6 +177,22 @@ stats(); setInterval(() => { if (!document.hidden) stats(); }, 10000);
 $('fullscreen').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); } catch { $('chat-status').textContent = 'Fullscreen unavailable in this browser.'; } };
 $('chat-nav').onclick = () => $('prompt').focus(); $('notes-nav').onclick = () => $('notes').focus();
 $('help').onclick = () => $('help-dialog').showModal(); $('close-help').onclick = () => $('help-dialog').close();
+const intelligenceDialog = document.createElement('dialog');
+intelligenceDialog.className = 'briefing-dialog';
+intelligenceDialog.innerHTML = '<button class="briefing-close" aria-label="Close intelligence briefings">×</button><p class="eyebrow">PUBLIC-SOURCE INTELLIGENCE</p><h2>Current briefings</h2><p class="footnote">World, China, engineering, aircraft, and markets.</p><div class="intel-list"></div>';
+const intelligenceList = intelligenceDialog.querySelector('.intel-list');
+intelligenceDialog.querySelector('button').onclick = () => intelligenceDialog.close();
+document.body.append(intelligenceDialog);
+$('intelligence').onclick = async () => {
+  intelligenceList.replaceChildren(); intelligenceDialog.showModal();
+  try {
+    const response = await fetch('/api/briefings'); if (!response.ok) throw new Error();
+    for (const feed of (await response.json()).feeds) for (const item of feed.items.slice(0, 3)) {
+      const link = document.createElement('a'), category = document.createElement('span'), title = document.createElement('strong');
+      link.href = item.link; link.target = '_blank'; link.rel = 'noopener noreferrer'; category.textContent = `${feed.category} · ${feed.source}`; title.textContent = item.title; link.append(category, title); intelligenceList.append(link);
+    }
+  } catch { intelligenceList.textContent = 'Briefings are unavailable. Try again shortly.'; }
+};
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 import './sphere.js';
 let briefingFeeds;

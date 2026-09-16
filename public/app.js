@@ -92,7 +92,7 @@ function startVoice() {
   try { recognition.start(); $('voice').textContent = 'Stop voice control'; $('reactor').classList.add('listening'); $('core-state').textContent = 'WATCHING'; $('core-caption').textContent = 'Say “Jarvis, wake up” or clap twice'; $('chat-status').textContent = 'Wake listening is active. Say Jarvis, wake up.'; } catch { recognition = null; $('chat-status').textContent = 'Could not start dictation.'; }
 }
 function handleTranscript(transcript) {
-  const match = transcript.match(/\b(?:hey\s+)?jarvis(?:\s+wake\s+up)?\b\s*(.*)/i);
+  const match = transcript.match(/\b(?:hey\s+)?jarvis\b[\s,]*(?:wake\s+up\b)?[\s,]*(.*)/i);
   if (!awake && match) { setWakeState('Wake phrase detected'); if (match[1]) { $('prompt').value = match[1].slice(0, 6000); $('chat-form').requestSubmit(); } }
   else if (awake && transcript) { awake = false; clearTimeout(wakeTimer); $('prompt').value = transcript.slice(0, 6000); $('chat-status').textContent = 'Command received.'; $('chat-form').requestSubmit(); }
 }
@@ -100,13 +100,14 @@ async function startLocalVoice() {
   if (localRecorder || localTranscribing || !voiceMode || sending) return;
   try {
     localSpeechStream ||= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
-    const chunks = []; localRecorder = new MediaRecorder(localSpeechStream);
+    const chunks = []; const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+    localRecorder = mimeType ? new MediaRecorder(localSpeechStream, { mimeType }) : new MediaRecorder(localSpeechStream);
     localRecorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     localRecorder.onstop = async () => {
       localRecorder = null; if (!chunks.length || !voiceMode) return;
       localTranscribing = true;
       try { const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer()); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); const response = await fetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ audio: btoa(binary) }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); if (data.transcript) handleTranscript(data.transcript); }
-      catch (error) { $('chat-status').textContent = error.message || 'Local speech failed.'; }
+      catch (error) { $('chat-status').textContent = `Local speech failed: ${error.message || 'transcription unavailable'}`; }
       finally { localTranscribing = false; if (voiceMode && !sending) setTimeout(startLocalVoice, 100); }
     };
     localRecorder.start(); localSpeechTimer = setTimeout(() => localRecorder?.state === 'recording' && localRecorder.stop(), 3200);

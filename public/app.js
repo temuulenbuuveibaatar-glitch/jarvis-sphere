@@ -1,7 +1,7 @@
 import { gesturesFromHands } from './gestures.js';
 import { ClapDetector } from './claps.js';
 const $ = id => document.getElementById(id);
-let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer;
+let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, localRecorder, localSpeechStream, localSpeechTimer, localTranscribing = false, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer;
 let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = false, frameTimer, workerReady = false, pinchStarted = 0, latched = false, hover, smooth, primaryHand, sphereHand, sphereSpan, desktopArmed = false, desktopGeneration = 0, desktopLast = 0, scrollAnchor;
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
@@ -68,17 +68,40 @@ async function startWakeAudio() {
 }
 function startVoice() {
   if (recognition || sending || !voiceMode || window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
+  if (session?.localSpeechReady) return startLocalVoice();
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { voiceMode = false; $('voice').textContent = 'Voice unavailable'; $('chat-status').textContent = 'Voice recognition is unavailable in this browser.'; return; }
   recognition = new Recognition(); recognition.lang = navigator.language || 'en-US'; recognition.interimResults = false; recognition.continuous = true;
-  recognition.onresult = event => { for (let index = event.resultIndex; index < event.results.length; index++) { if (!event.results[index].isFinal) continue; const transcript = event.results[index][0].transcript.trim(); const match = transcript.match(/\b(?:hey\s+)?jarvis(?:\s+wake\s+up)?\b\s*(.*)/i); if (!awake && match) { setWakeState('Wake phrase detected'); if (match[1]) { $('prompt').value = match[1].slice(0, 6000); $('chat-form').requestSubmit(); } } else if (awake && transcript) { awake = false; clearTimeout(wakeTimer); $('prompt').value = transcript.slice(0, 6000); $('chat-status').textContent = 'Command received.'; $('chat-form').requestSubmit(); } } };
+  recognition.onresult = event => { for (let index = event.resultIndex; index < event.results.length; index++) if (event.results[index].isFinal) handleTranscript(event.results[index][0].transcript.trim()); };
   recognition.onerror = event => { if (event.error === 'no-speech' || event.error === 'aborted') return; voiceMode = false; awake = false; stopWakeAudio(); setSpeech(false); $('voice').textContent = 'Start voice control'; $('reactor').classList.remove('listening'); $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; $('chat-status').textContent = /not-allowed/.test(event.error) ? 'Microphone access was denied. Enable microphone access for desktop apps in Windows Settings, then try again.' : `Dictation failed (${event.error}). Try browser mode or configure a local speech service.`; };
   recognition.onend = () => { recognition = null; if (voiceMode && !sending && !window.speechSynthesis?.speaking) setTimeout(startVoice, 250); };
   try { recognition.start(); $('voice').textContent = 'Stop voice control'; $('reactor').classList.add('listening'); $('core-state').textContent = 'WATCHING'; $('core-caption').textContent = 'Say “Jarvis, wake up” or clap twice'; $('chat-status').textContent = 'Wake listening is active. Say Jarvis, wake up.'; } catch { recognition = null; $('chat-status').textContent = 'Could not start dictation.'; }
 }
+function handleTranscript(transcript) {
+  const match = transcript.match(/\b(?:hey\s+)?jarvis(?:\s+wake\s+up)?\b\s*(.*)/i);
+  if (!awake && match) { setWakeState('Wake phrase detected'); if (match[1]) { $('prompt').value = match[1].slice(0, 6000); $('chat-form').requestSubmit(); } }
+  else if (awake && transcript) { awake = false; clearTimeout(wakeTimer); $('prompt').value = transcript.slice(0, 6000); $('chat-status').textContent = 'Command received.'; $('chat-form').requestSubmit(); }
+}
+async function startLocalVoice() {
+  if (localRecorder || localTranscribing || !voiceMode || sending) return;
+  try {
+    localSpeechStream ||= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+    const chunks = []; localRecorder = new MediaRecorder(localSpeechStream);
+    localRecorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    localRecorder.onstop = async () => {
+      localRecorder = null; if (!chunks.length || !voiceMode) return;
+      localTranscribing = true;
+      try { const bytes = new Uint8Array(await new Blob(chunks).arrayBuffer()); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); const response = await fetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ audio: btoa(binary) }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); if (data.transcript) handleTranscript(data.transcript); }
+      catch (error) { $('chat-status').textContent = error.message || 'Local speech failed.'; }
+      finally { localTranscribing = false; if (voiceMode && !sending) setTimeout(startLocalVoice, 100); }
+    };
+    localRecorder.start(); localSpeechTimer = setTimeout(() => localRecorder?.state === 'recording' && localRecorder.stop(), 3200);
+    $('voice').textContent = 'Stop voice control'; $('reactor').classList.add('listening'); $('core-state').textContent = 'WATCHING'; $('core-caption').textContent = 'Say “Jarvis, wake up” or clap twice'; $('chat-status').textContent = 'Local speech listening is active.';
+  } catch { voiceMode = false; $('voice').textContent = 'Start voice control'; $('chat-status').textContent = 'Microphone access is required for local speech.'; }
+}
 $('voice').onclick = () => {
   voiceMode = !voiceMode; setSpeech(voiceMode);
-  if (!voiceMode) { awake = false; clearTimeout(wakeTimer); recognition?.stop(); stopWakeAudio(); speechSynthesis?.cancel(); $('voice').textContent = 'Start voice control'; $('reactor').classList.remove('listening'); $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; return; }
+  if (!voiceMode) { awake = false; clearTimeout(wakeTimer); recognition?.stop(); clearTimeout(localSpeechTimer); localRecorder?.state === 'recording' && localRecorder.stop(); localSpeechStream?.getTracks().forEach(track => track.stop()); localSpeechStream = null; stopWakeAudio(); speechSynthesis?.cancel(); $('voice').textContent = 'Start voice control'; $('reactor').classList.remove('listening'); $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; return; }
   startVoice(); startWakeAudio();
 };
 function stopCamera(info = 'Camera off. Processing stopped.') {

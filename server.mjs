@@ -10,7 +10,8 @@ import os from 'node:os';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const helperRoot = process.resourcesPath && existsSync(path.join(process.resourcesPath, 'app.asar.unpacked', 'computer_action.py')) ? path.join(process.resourcesPath, 'app.asar.unpacked') : root;
 const publicRoot = path.join(root, 'public');
-const python = process.env.JARVIS_PYTHON || 'C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe';
+const hermesHome = process.env.JARVIS_HERMES_HOME || 'C:\\Hermes';
+const python = process.env.JARVIS_PYTHON || path.join(hermesHome, 'hermes-agent', 'venv', 'Scripts', 'python.exe');
 const desktopPython = process.env.JARVIS_DESKTOP_PYTHON || python;
 const token = randomBytes(32).toString('hex');
 const assistantSystem = "You are JARVIS, a professional, deeply caring personal assistant. Help with explanations, writing, planning, and brainstorming from incomplete clues. When the user is trying to remember something, ask concise clarifying questions and offer grounded possibilities without pretending certainty. You have no computer, file, camera, microphone, web or command access. Never claim to have performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty.";
@@ -100,9 +101,20 @@ function startDesktopCompanion() {
   child.stdin.on('error', () => {});
   return companion;
 }
+function startTranscriptionCompanion() {
+  if (!existsSync(python)) return { ready: false, stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
+  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
+  let buffer = '', pending;
+  const companion = { ready: false, stop() { child.kill(); }, transcribe(payload) { return new Promise((resolve, reject) => { if (!companion.ready || pending) return reject(new Error('Local speech is busy.')); pending = { resolve, reject }; child.stdin.write(`${JSON.stringify(payload)}\n`); }); } };
+  child.stdout.on('data', chunk => { buffer += chunk; for (const line of buffer.split('\n')) { if (!line.trim()) continue; try { const result = JSON.parse(line); if (result.ready) companion.ready = true; else if (pending) { const { resolve, reject } = pending; pending = undefined; result.error ? reject(new Error(result.error)) : resolve(result); } } catch {} } buffer = buffer.endsWith('\n') ? '' : buffer.slice(buffer.lastIndexOf('\n') + 1); });
+  child.on('error', () => { companion.ready = false; pending?.reject(new Error('Local speech is unavailable.')); pending = undefined; });
+  child.on('exit', () => { companion.ready = false; pending?.reject(new Error('Local speech stopped.')); pending = undefined; });
+  child.stdin.on('error', () => {});
+  return companion;
+}
 export function hermesReply(messages, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
+    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
     const output = []; let bytes = 0;
     const kill = () => child.kill();
     signal?.addEventListener('abort', kill, { once: true });
@@ -139,9 +151,9 @@ export async function bytezReply(messages, signal) {
   } finally { signal?.removeEventListener('abort', abort); timeout.removeEventListener('abort', abort); }
 }
 function providerReply(messages, signal) { return (process.env.JARVIS_PROVIDER || 'hermes').toLowerCase() === 'bytez' ? bytezReply(messages, signal) : hermesReply(messages, signal); }
-export function createServer({ reply = providerReply, desktop = startDesktopCompanion() } = {}) {
+export function createServer({ reply = providerReply, desktop = startDesktopCompanion(), transcriber = startTranscriptionCompanion() } = {}) {
   let busy = false, lastRequest = 0, desktopArmed = false, desktopGeneration = 0;
-  return http.createServer(async (req, res) => {
+  const httpServer = http.createServer(async (req, res) => {
     const port = req.socket.localPort;
     const origin = `http://${req.headers.host}`;
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -165,7 +177,7 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
           ? Boolean(process.env.OPENROUTER_API_KEY && process.env.JARVIS_OPENROUTER_MODEL)
           : provider === 'bytez' ? Boolean(process.env.BYTEZ_API_KEY && process.env.JARVIS_BYTEZ_MODEL)
           : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY) : false;
-      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
+      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });
     if (req.method === 'GET' && pathname === '/api/markets') return send(200, await marketSnapshot());
@@ -226,6 +238,14 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
       try { for await (const chunk of req) { size += chunk.length; if (size > 8192) return send(413, { error: 'Speech request too large.' }); chunks.push(chunk); } const { text } = JSON.parse(Buffer.concat(chunks).toString('utf8')); if (typeof text !== 'string' || !text.trim() || text.length > 6000) return send(400, { error: 'Invalid speech text.' }); await voiceboxSpeak(text); return send(204, {}); }
       catch (error) { return send(503, { error: error.message || 'Voicebox unavailable.' }); }
     }
+    if (req.method === 'POST' && pathname === '/api/transcribe') {
+      const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
+      if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
+      if (req.headers['content-type'] !== 'application/json') return send(415, { error: 'JSON required.' });
+      const chunks = []; let size = 0;
+      try { for await (const chunk of req) { size += chunk.length; if (size > 8 * 1024 * 1024) return send(413, { error: 'Audio clip too large.' }); chunks.push(chunk); } return send(200, await transcriber.transcribe(JSON.parse(Buffer.concat(chunks).toString('utf8')))); }
+      catch (error) { return send(503, { error: error.message || 'Local speech failed.' }); }
+    }
     if (pathname.startsWith('/api/')) return send(404, { error: 'Unknown endpoint.' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, { error: 'Method not allowed.' });
     const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
@@ -236,6 +256,8 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
     try { const bytes = await readFile(file); res.writeHead(200, { 'Content-Type': mime[path.extname(file)] }); res.end(req.method === 'HEAD' ? undefined : bytes); }
     catch { send(404, { error: 'Not found.' }); }
   });
+  httpServer.on('close', () => transcriber.stop?.());
+  return httpServer;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.JARVIS_PORT || 4317);

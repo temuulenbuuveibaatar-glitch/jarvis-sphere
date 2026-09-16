@@ -1,6 +1,6 @@
 {
   "name": "jarvis-local",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "main": "electron-main.mjs",
@@ -29,6 +29,7 @@
       "hermes_bridge.py",
       "computer_action.py",
       "desktop_control.py",
+      "transcribe_audio.py",
       "electron-main.mjs",
       "package.json"
     ],

@@ -176,7 +176,8 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
         : provider === 'openrouter'
           ? Boolean(process.env.OPENROUTER_API_KEY && process.env.JARVIS_OPENROUTER_MODEL)
           : provider === 'bytez' ? Boolean(process.env.BYTEZ_API_KEY && process.env.JARVIS_BYTEZ_MODEL)
-          : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY) : false;
+          : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY)
+          : provider === 'deepseek' ? Boolean(process.env.DEEPSEEK_API_KEY) : false;
       return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });

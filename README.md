@@ -4,10 +4,10 @@ A local personal assistant with an original particle-sphere interface, Hermes ch
 
 ## What it does
 
-- Select any visible sphere particle to open a current briefing from World, China, engineering, aircraft, or market feeds. Each panel shows the publisher, source time, refresh time, and original link.
+- Select any visible sphere particle to open a current briefing from World, China, engineering, aircraft, market, or OSIRIS feeds. Each panel shows the publisher, source time, refresh time, and original link.
 - Scroll over the sphere to zoom. When zoomed in, JARVIS shows a source-linked briefing preview; market particles include a current intraday Dow Jones line chart from Yahoo Finance.
 - Say “Jarvis, wake up” or clap twice after starting voice control. JARVIS responds in the browser voice or an optional local Voicebox profile.
-- Use one pinched hand to rotate the sphere and two hands to zoom it. Camera inference stays in the browser.
+- Use one pinched hand to rotate the sphere and two hands to zoom it. In Command UI mode, Air Touch provides a holographic HUD targeting reticle, rich gesture state tracking, and full desktop mouse control (movement, pinch-click, and dual-hand vertical scrolling) when armed. Camera inference stays in the browser.
 - Use the Computer console to open a website or local app, download a file to Downloads, find files under the current user's home folder, or run an explicit command. Every action has an exact review-and-confirm screen. Commands run without a shell.
 
 ## Run

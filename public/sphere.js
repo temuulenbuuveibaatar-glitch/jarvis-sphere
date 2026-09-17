@@ -1,7 +1,7 @@
 const canvas = document.getElementById('particle-sphere');
 const context = canvas.getContext('2d', { alpha: false });
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const categories = ['WORLD', 'CHINA', 'ENGINEERING', 'AIRCRAFT', 'MARKETS'];
+const categories = ['WORLD', 'CHINA', 'ENGINEERING', 'AIRCRAFT', 'MARKETS', 'OSIRIS'];
 const points = Array.from({ length: 4600 }, (_, index) => {
   const y = 1 - 2 * (index + .5) / 4600, angle = index * 2.399963229728653, radius = Math.sqrt(1 - y * y);
   return { index, category: categories[index % categories.length], x: radius * Math.cos(angle), y, z: radius * Math.sin(angle), seed: (index * 127.1) % 31, screenX: 0, screenY: 0, depth: -1 };
@@ -34,7 +34,7 @@ function draw(time) {
   for (let index = 0; index < points.length; index += low ? 2 : 1) {
     const point = points[index], x = point.x * cosine + point.z * sine, yawZ = point.z * cosine - point.x * sine, y = point.y * tiltCosine - yawZ * tiltSine, z = yawZ * tiltCosine + point.y * tiltSine, ripple = 1 + .019 * Math.sin(point.seed + t * 7) * (active ? 2 : 1), perspective = 2.8 / (2.8 - z * .3), light = (z + 1) / 2;
     point.screenX = middle + x * radius * ripple * perspective; point.screenY = middle + y * radius * ripple * perspective; point.depth = z;
-    context.fillStyle = light > .84 ? '#97e9ff' : light > .42 ? '#21c5ff' : '#09678f'; context.globalAlpha = .24 + light * .73;
+    context.fillStyle = point.category === 'OSIRIS' && light > .5 ? '#ffd466' : light > .84 ? '#97e9ff' : light > .42 ? '#21c5ff' : '#09678f'; context.globalAlpha = .24 + light * .73;
     const dot = (.55 + light * .8) * size / 560; context.fillRect(point.screenX, point.screenY, dot * 1.35, dot);
   }
   context.lineWidth = Math.max(1, size / 900);

@@ -1,22 +1,288 @@
-/* Command deck: scoped so the original sphere remains independent. */
-body[data-ui-mode="command"]{--bg:#10100f;--surface:#191917;--line:#494336;--cyan:#e7b967;--bright:#f3eee3;--muted:#b0a899;--pulse:#edb85f;background:#10100f;color:var(--bright)}
-body[data-ui-mode="command"] header{background:#151513;border-color:var(--line)}
-body[data-ui-mode="command"] .rail{background:#151513}
-body[data-ui-mode="command"] main{max-width:1800px;padding:24px}
-body[data-ui-mode="command"] .intro{min-height:0!important;padding:0 0 20px}
-body[data-ui-mode="command"] .intro h1,body[data-ui-mode="command"] .subtitle{display:none}
-body[data-ui-mode="command"] .intro .eyebrow{margin:0;color:var(--pulse)}
-body[data-ui-mode="command"] .dashboard{grid-template-columns:minmax(280px,1fr) minmax(340px,1.1fr)!important;grid-template-areas:"core chat" "gesture chat"!important;gap:20px!important;padding-top:20px}
-body[data-ui-mode="command"] .panel{background:#191917;border:1px solid var(--line);padding:20px;max-width:none;width:100%;margin:0}
-body[data-ui-mode="command"] .panel-heading{border-bottom:1px solid var(--line);padding-bottom:12px}
-body[data-ui-mode="command"] .chat-panel{min-height:650px!important}
-body[data-ui-mode="command"] .chat-panel:before{display:none}
-body[data-ui-mode="command"] .reactor{width:min(100%,340px)!important;background:repeating-radial-gradient(circle,transparent 0 27px,#edb85f20 28px 29px);filter:sepia(1) saturate(.8)}
-body[data-ui-mode="command"] .reactor-center{background:radial-gradient(circle,#fff7dd,#b87d31 40%,#201b12 70%);box-shadow:0 0 30px #edb85f33}
-body[data-ui-mode="command"] .reactor:before,body[data-ui-mode="command"] .reactor:after{display:none}
-body[data-ui-mode="command"] .message.user,body[data-ui-mode="command"] .composer{background:#22211d;border-color:var(--line)}
-body[data-ui-mode="command"] button{border-radius:2px}
-body[data-ui-mode="command"] .gesture-panel .camera-stage{height:160px}
-body[data-ui-mode="command"] .lower-grid{margin-top:20px;gap:20px}
-body[data-ui-mode="command"] .drawer-toolbar{display:none}
-@media(max-width:800px){body[data-ui-mode="command"] .dashboard{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"core" "chat" "gesture"!important}body[data-ui-mode="command"] header{height:auto;min-height:74px;flex-wrap:wrap;padding:16px}body[data-ui-mode="command"] .header-right{flex-wrap:wrap;gap:12px}}
+/* J.A.R.V.I.S. Tactical Command Deck (MCU Holographic HUD Mode) */
+body[data-ui-mode="command"] {
+  --bg: #020810;
+  --surface: #041422ea;
+  --line: #0a4f6d;
+  --line-bright: #00f0ff;
+  --cyan: #00f0ff;
+  --bright: #e6f9ff;
+  --muted: #6aa3b8;
+  --pulse: #00f0ff;
+  --stark-gold: #ffb700;
+  --threat-red: #ff334b;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
+  background: var(--bg);
+  color: var(--bright);
+}
+
+body[data-ui-mode="command"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 50% 25%, rgba(0, 240, 255, 0.12), transparent 60%);
+  background-size: 32px 32px, 32px 32px, 100% 100%;
+  opacity: 0.85;
+}
+
+body[data-ui-mode="command"] header {
+  background: rgba(2, 12, 22, 0.9);
+  border-color: var(--line);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 2px 20px rgba(0, 240, 255, 0.07);
+}
+
+body[data-ui-mode="command"] .brand {
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+}
+
+body[data-ui-mode="command"] .brand span {
+  color: var(--muted);
+}
+
+body[data-ui-mode="command"] .rail {
+  background: rgba(2, 12, 22, 0.94);
+  border-color: var(--line);
+}
+
+body[data-ui-mode="command"] .rail-button.active {
+  background: var(--cyan);
+  color: #01111a;
+  box-shadow: 0 0 28px var(--cyan);
+}
+
+body[data-ui-mode="command"] main {
+  max-width: 1800px;
+  padding: 24px 32px;
+}
+
+body[data-ui-mode="command"] .intro {
+  min-height: 0 !important;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+body[data-ui-mode="command"] .intro h1,
+body[data-ui-mode="command"] .subtitle {
+  display: none;
+}
+
+body[data-ui-mode="command"] .intro .eyebrow {
+  margin: 0;
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+body[data-ui-mode="command"] .dashboard {
+  grid-template-columns: minmax(290px, 1fr) minmax(360px, 1.25fr) !important;
+  grid-template-areas: "core chat" "gesture chat" !important;
+  gap: 24px !important;
+  padding-top: 20px;
+}
+
+body[data-ui-mode="command"] .panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 20px;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 24px rgba(0, 240, 255, 0.05), inset 0 0 16px rgba(0, 150, 220, 0.04);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+body[data-ui-mode="command"] .panel-heading {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+body[data-ui-mode="command"] .panel-heading h2 {
+  color: var(--cyan);
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+body[data-ui-mode="command"] .panel-heading h2::before {
+  content: "[ ";
+  color: var(--stark-gold);
+}
+
+body[data-ui-mode="command"] .panel-heading h2::after {
+  content: " ]";
+  color: var(--stark-gold);
+}
+
+body[data-ui-mode="command"] .small-status {
+  color: var(--cyan);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  background: rgba(0, 240, 255, 0.08);
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+
+body[data-ui-mode="command"] .chat-panel {
+  min-height: 650px !important;
+  border-left: 1px solid var(--line);
+}
+
+body[data-ui-mode="command"] .chat-panel:before {
+  display: none;
+}
+
+body[data-ui-mode="command"] .reactor {
+  width: min(100%, 340px) !important;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.16) 0%, rgba(0, 70, 100, 0.08) 50%, transparent 72%);
+  border-radius: 50%;
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.22);
+}
+
+body[data-ui-mode="command"] .orbit-one {
+  border: 1.5px dashed var(--cyan);
+  animation: drift 14s linear infinite;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.25);
+}
+
+body[data-ui-mode="command"] .orbit-two {
+  border-color: var(--cyan);
+  border-left-color: transparent;
+  border-right-color: transparent;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
+}
+
+body[data-ui-mode="command"] .orbit-three {
+  border-color: var(--stark-gold);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+
+body[data-ui-mode="command"] .reactor-center {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #00f0ff 30%, #055979 65%, #01121c);
+  box-shadow: 0 0 55px rgba(0, 240, 255, 0.8), inset 0 0 20px #ffffff;
+}
+
+body[data-ui-mode="command"] .reactor:before,
+body[data-ui-mode="command"] .reactor:after {
+  display: none;
+}
+
+body[data-ui-mode="command"] .message.user {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.1);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+body[data-ui-mode="command"] .message.user .message-label {
+  color: var(--stark-gold);
+}
+
+body[data-ui-mode="command"] .message.assistant .message-label {
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+
+body[data-ui-mode="command"] .composer {
+  background: rgba(2, 14, 24, 0.94);
+  border: 1.5px solid var(--cyan);
+  color: var(--bright);
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.25), inset 0 0 12px rgba(0, 240, 255, 0.08);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+body[data-ui-mode="command"] #prompt {
+  color: #ffffff;
+}
+
+body[data-ui-mode="command"] #prompt::placeholder {
+  color: var(--muted);
+}
+
+body[data-ui-mode="command"] #send {
+  background: var(--cyan);
+  color: #010c14;
+  box-shadow: 0 0 20px var(--cyan);
+}
+
+body[data-ui-mode="command"] #send:hover {
+  background: #ffffff;
+  box-shadow: 0 0 30px #ffffff;
+}
+
+body[data-ui-mode="command"] .primary {
+  background: linear-gradient(90deg, #00f0ff, #00bfff);
+  color: #010c14;
+  border: 1px solid var(--cyan);
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.35);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+body[data-ui-mode="command"] .primary:hover {
+  background: #ffffff;
+  color: #010c14;
+  box-shadow: 0 0 28px rgba(255, 255, 255, 0.6);
+}
+
+body[data-ui-mode="command"] .secondary {
+  background: rgba(0, 36, 56, 0.45);
+  border: 1px solid var(--line);
+  color: var(--bright);
+}
+
+body[data-ui-mode="command"] .secondary:hover {
+  border-color: var(--cyan);
+  background: rgba(0, 100, 150, 0.3);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.25);
+}
+
+body[data-ui-mode="command"] .telemetry {
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+body[data-ui-mode="command"] .telemetry div {
+  background: #020c15;
+}
+
+body[data-ui-mode="command"] .telemetry strong {
+  color: var(--cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
+}
+
+body[data-ui-mode="command"] .gesture-panel .camera-stage {
+  height: 170px;
+  border: 1px solid var(--line);
+}
+
+body[data-ui-mode="command"] .lower-grid {
+  margin-top: 24px;
+  gap: 24px;
+}
+
+body[data-ui-mode="command"] .drawer-toolbar {
+  display: none;
+}
+
+@media(max-width: 800px) {
+  body[data-ui-mode="command"] .dashboard {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "core" "chat" "gesture" !important;
+  }
+  body[data-ui-mode="command"] header {
+    height: auto;
+    min-height: 74px;
+    flex-wrap: wrap;
+    padding: 16px;
+  }
+  body[data-ui-mode="command"] .header-right {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

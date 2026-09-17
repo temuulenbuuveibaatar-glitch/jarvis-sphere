@@ -22,6 +22,7 @@ const briefingSources = [
   { category: 'ENGINEERING', source: 'NASA', url: 'https://www.nasa.gov/news-release/feed/' },
   { category: 'AIRCRAFT', source: 'FlightGlobal', url: 'https://www.flightglobal.com/rss' },
   { category: 'MARKETS', source: 'Yahoo Finance', url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EDJI,GC%3DF,CL%3DF,BTC-USD&region=US&lang=en-US' },
+  { category: 'OSIRIS', source: 'OSIRIS Intelligence', url: process.env.JARVIS_OSIRIS_FEED || 'https://www.defenseone.com/rss/all/' },
 ];
 let briefingCache = { expires: 0, data: null };
 let marketCache = { expires: 0, data: null };

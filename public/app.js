@@ -177,22 +177,60 @@ async function setDesktopArmed(next) {
 }
 function updateHands(hands) {
   const detected = gesturesFromHands(hands, Number($('sensitivity').value)); const cursor = $('hand-cursor');
-  if (!detected.length) { cursor.hidden = true; primaryHand = null; sphereHand = null; sphereSpan = null; pinchStarted = 0; latched = false; smooth = null; hover?.classList.remove('air-hover'); hover = null; $('gesture-state').textContent = 'FINDING HAND'; return; }
+  if (!detected.length) { cursor.hidden = true; primaryHand = null; sphereHand = null; sphereSpan = null; pinchStarted = 0; latched = false; smooth = null; scrollAnchor = null; hover?.classList.remove('air-hover'); hover = null; $('gesture-state').textContent = 'FINDING HAND'; return; }
   const hand = primaryHand ? detected.reduce((nearest, next) => Math.hypot(next.x - primaryHand.x, next.y - primaryHand.y) < Math.hypot(nearest.x - primaryHand.x, nearest.y - primaryHand.y) ? next : nearest) : detected[0];
   const second = detected.find(next => next !== hand); primaryHand = hand;
-  $('gesture-state').textContent = second ? 'TWO HANDS' : 'TRACKING';
+  const now = performance.now();
+  if (desktopArmed) {
+    $('gesture-state').textContent = hand.pinch ? 'DESKTOP CLICK' : second ? 'DESKTOP SCROLL' : 'DESKTOP ACTIVE';
+  } else {
+    $('gesture-state').textContent = second ? 'TWO HANDS' : hand.pinch ? 'PINCH' : hand.pointing ? 'POINT' : hand.openPalm ? 'PALM' : 'TRACKING';
+  }
   const next = { x: hand.x * (innerWidth - 24) + 12, y: hand.y * (innerHeight - 24) + 12 };
   const distance = smooth ? Math.hypot(next.x - smooth.x, next.y - smooth.y) / Math.max(innerWidth, innerHeight) : 1;
   const follow = hand.pinch ? .62 : Math.min(.7, .16 + distance * 3.2);
   smooth = smooth ? { x: smooth.x * (1 - follow) + next.x * follow, y: smooth.y * (1 - follow) + next.y * follow } : next;
-  cursor.hidden = false; cursor.style.left = `${smooth.x - 11}px`; cursor.style.top = `${smooth.y - 11}px`; cursor.classList.toggle('pinching', hand.pinch);
-  if (hand.pinch && sphereHand) window.jarvisSphere?.drag((hand.x - sphereHand.x) * 6, (hand.y - sphereHand.y) * 6);
+  cursor.hidden = false; cursor.style.left = `${smooth.x - 14}px`; cursor.style.top = `${smooth.y - 14}px`;
+  cursor.classList.toggle('pinching', hand.pinch);
+  cursor.classList.toggle('desktop-armed', desktopArmed);
+  cursor.classList.toggle('pointing', Boolean(hand.pointing));
+  cursor.classList.toggle('open-palm', Boolean(hand.openPalm));
+
+  if (desktopArmed) {
+    if (now - desktopLast >= 35) {
+      desktopLast = now;
+      desktop({ action: 'move', x: hand.x, y: hand.y });
+    }
+  }
+
+  if (hand.pinch && sphereHand && !desktopArmed) window.jarvisSphere?.drag((hand.x - sphereHand.x) * 6, (hand.y - sphereHand.y) * 6);
   sphereHand = { x: hand.x, y: hand.y };
-  if (second) { const span = Math.hypot(hand.x - second.x, hand.y - second.y); if (sphereSpan !== null) window.jarvisSphere?.zoom((span - sphereSpan) * 1.8); sphereSpan = span; } else sphereSpan = null;
+  if (second) {
+    const span = Math.hypot(hand.x - second.x, hand.y - second.y);
+    if (sphereSpan !== null && !desktopArmed) window.jarvisSphere?.zoom((span - sphereSpan) * 1.8);
+    sphereSpan = span;
+    if (desktopArmed) {
+      if (scrollAnchor === null) scrollAnchor = second.y;
+      else {
+        const delta = Math.round((second.y - scrollAnchor) * 900);
+        if (Math.abs(delta) >= 20 && now - desktopLast >= 45) {
+          desktop({ action: 'scroll', delta: Math.max(-1200, Math.min(1200, -delta)) });
+          scrollAnchor = second.y;
+        }
+      }
+    }
+  } else {
+    sphereSpan = null;
+    scrollAnchor = null;
+  }
   if (!hand.pinch) { cursor.style.setProperty('--pinch-progress', '0deg'); latched = false; pinchStarted = 0; return; }
-  if (!pinchStarted) pinchStarted = performance.now();
-  const heldFor = performance.now() - pinchStarted; cursor.style.setProperty('--pinch-progress', `${Math.min(360, heldFor * 2)}deg`);
-  if (!latched && heldFor >= 180) { latched = true; window.jarvisSphere?.selectAt(smooth.x, smooth.y); }
+  if (!pinchStarted) pinchStarted = now;
+  const heldFor = now - pinchStarted; cursor.style.setProperty('--pinch-progress', `${Math.min(360, heldFor * 2)}deg`);
+  if (!latched && heldFor >= 160) {
+    latched = true;
+    if (desktopArmed) desktop({ action: 'click' });
+    else window.jarvisSphere?.selectAt(smooth.x, smooth.y);
+  }
 }
 $('air-touch').onclick = async () => {
   if (stream || cameraStarting) { stopCamera(); return; }
@@ -240,7 +278,7 @@ $('chat-nav').onclick = () => $('prompt').focus(); $('notes-nav').onclick = () =
 $('help').onclick = () => $('help-dialog').showModal(); $('close-help').onclick = () => $('help-dialog').close();
 const intelligenceDialog = document.createElement('dialog');
 intelligenceDialog.className = 'briefing-dialog';
-intelligenceDialog.innerHTML = '<button class="briefing-close" aria-label="Close intelligence briefings">×</button><p class="eyebrow">PUBLIC-SOURCE INTELLIGENCE</p><h2>Current briefings</h2><p class="footnote">World, China, engineering, aircraft, and markets.</p><div class="intel-list"></div>';
+intelligenceDialog.innerHTML = '<button class="briefing-close" aria-label="Close intelligence briefings">×</button><p class="eyebrow">PUBLIC-SOURCE INTELLIGENCE</p><h2>Current briefings</h2><p class="footnote">World, China, engineering, aircraft, markets, and OSIRIS intelligence.</p><div class="intel-list"></div>';
 const intelligenceList = intelligenceDialog.querySelector('.intel-list');
 intelligenceDialog.querySelector('button').onclick = () => intelligenceDialog.close();
 document.body.append(intelligenceDialog);
@@ -250,7 +288,14 @@ $('intelligence').onclick = async () => {
     const response = await fetch('/api/briefings'); if (!response.ok) throw new Error();
     for (const feed of (await response.json()).feeds) for (const item of feed.items.slice(0, 3)) {
       const link = document.createElement('a'), category = document.createElement('span'), title = document.createElement('strong');
-      link.href = item.link; link.target = '_blank'; link.rel = 'noopener noreferrer'; category.textContent = `${feed.category} · ${feed.source}`; title.textContent = item.title; link.append(category, title); intelligenceList.append(link);
+      link.href = item.link; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      if (feed.category === 'OSIRIS') {
+        link.classList.add('intel-osiris');
+        category.innerHTML = `<span class="osiris-badge">OSIRIS</span> · ${feed.source}`;
+      } else {
+        category.textContent = `${feed.category} · ${feed.source}`;
+      }
+      title.textContent = item.title; link.append(category, title); intelligenceList.append(link);
     }
   } catch { intelligenceList.textContent = 'Briefings are unavailable. Try again shortly.'; }
 };

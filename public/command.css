@@ -1,0 +1,22 @@
+/* Command deck: scoped so the original sphere remains independent. */
+body[data-ui-mode="command"]{--bg:#10100f;--surface:#191917;--line:#494336;--cyan:#e7b967;--bright:#f3eee3;--muted:#b0a899;--pulse:#edb85f;background:#10100f;color:var(--bright)}
+body[data-ui-mode="command"] header{background:#151513;border-color:var(--line)}
+body[data-ui-mode="command"] .rail{background:#151513}
+body[data-ui-mode="command"] main{max-width:1800px;padding:24px}
+body[data-ui-mode="command"] .intro{min-height:0!important;padding:0 0 20px}
+body[data-ui-mode="command"] .intro h1,body[data-ui-mode="command"] .subtitle{display:none}
+body[data-ui-mode="command"] .intro .eyebrow{margin:0;color:var(--pulse)}
+body[data-ui-mode="command"] .dashboard{grid-template-columns:minmax(280px,1fr) minmax(340px,1.1fr)!important;grid-template-areas:"core chat" "gesture chat"!important;gap:20px!important;padding-top:20px}
+body[data-ui-mode="command"] .panel{background:#191917;border:1px solid var(--line);padding:20px;max-width:none;width:100%;margin:0}
+body[data-ui-mode="command"] .panel-heading{border-bottom:1px solid var(--line);padding-bottom:12px}
+body[data-ui-mode="command"] .chat-panel{min-height:650px!important}
+body[data-ui-mode="command"] .chat-panel:before{display:none}
+body[data-ui-mode="command"] .reactor{width:min(100%,340px)!important;background:repeating-radial-gradient(circle,transparent 0 27px,#edb85f20 28px 29px);filter:sepia(1) saturate(.8)}
+body[data-ui-mode="command"] .reactor-center{background:radial-gradient(circle,#fff7dd,#b87d31 40%,#201b12 70%);box-shadow:0 0 30px #edb85f33}
+body[data-ui-mode="command"] .reactor:before,body[data-ui-mode="command"] .reactor:after{display:none}
+body[data-ui-mode="command"] .message.user,body[data-ui-mode="command"] .composer{background:#22211d;border-color:var(--line)}
+body[data-ui-mode="command"] button{border-radius:2px}
+body[data-ui-mode="command"] .gesture-panel .camera-stage{height:160px}
+body[data-ui-mode="command"] .lower-grid{margin-top:20px;gap:20px}
+body[data-ui-mode="command"] .drawer-toolbar{display:none}
+@media(max-width:800px){body[data-ui-mode="command"] .dashboard{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"core" "chat" "gesture"!important}body[data-ui-mode="command"] header{height:auto;min-height:74px;flex-wrap:wrap;padding:16px}body[data-ui-mode="command"] .header-right{flex-wrap:wrap;gap:12px}}

@@ -4,6 +4,17 @@ import os
 import sys
 import tempfile
 
+model = None
+
+
+def init_backend():
+    global model
+    from faster_whisper import WhisperModel
+    import numpy as np
+    model = WhisperModel(os.environ.get('JARVIS_STT_MODEL', 'base'), device='cpu', compute_type='int8')
+    segments, _ = model.transcribe(np.zeros(16000, dtype=np.float32), language='en')
+    list(segments)  # Inference is lazy; exercise it before announcing readiness.
+
 
 def transcribe(payload):
     encoded = payload.get("audio")
@@ -19,11 +30,10 @@ def transcribe(payload):
         audio.write(data)
         filename = audio.name
     try:
-        from tools.voice_mode import transcribe_recording
-        result = transcribe_recording(filename)
-        if not result.get("success"):
-            raise RuntimeError(result.get("error") or "Local transcription failed")
-        return {"transcript": str(result.get("transcript") or "").strip()}
+        if model is None:
+            raise RuntimeError('Local speech model is not initialized')
+        segments, _ = model.transcribe(filename, vad_filter=True, condition_on_previous_text=False)
+        return {"transcript": ' '.join(segment.text.strip() for segment in segments).strip()}
     finally:
         try:
             os.unlink(filename)
@@ -32,6 +42,11 @@ def transcribe(payload):
 
 
 if __name__ == "__main__":
+    try:
+        init_backend()
+    except Exception as error:
+        print(json.dumps({"ready": False, "error": str(error)[:240]}), flush=True)
+        sys.exit(1)
     print(json.dumps({"ready": True}), flush=True)
     for line in sys.stdin:
         try:

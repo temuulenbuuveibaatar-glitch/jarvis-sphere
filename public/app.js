@@ -6,6 +6,8 @@ let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = fa
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
 const sphereTheme = document.querySelector('link[href^="/sphere.css"]');
+const commandTheme = document.createElement('link');
+commandTheme.rel = 'stylesheet'; commandTheme.href = '/command.css'; document.head.append(commandTheme);
 const uiMode = document.createElement('button');
 uiMode.id = 'ui-mode'; uiMode.className = 'text-button'; uiMode.type = 'button'; uiMode.setAttribute('aria-label', 'Switch interface mode');
 document.querySelector('.header-right')?.insertBefore(uiMode, $('fullscreen'));
@@ -26,7 +28,7 @@ function message(role, text, error = false) {
   article.append(label, content); $('messages').append(article); article.scrollIntoView({ block: 'nearest' });
 }
 async function connect() {
-  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) $('core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; }
+  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; }
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();
@@ -83,6 +85,14 @@ async function startWakeAudio() {
 function startVoice() {
   if (recognition || sending || !voiceMode || window.speechSynthesis?.speaking || window.speechSynthesis?.pending) return;
   if (session?.localSpeechReady) return startLocalVoice();
+  if (/Electron\//.test(navigator.userAgent)) {
+    voiceMode = false; awake = false; stopWakeAudio(); setSpeech(false);
+    $('voice').textContent = 'Start voice control';
+    $('reactor').classList.remove('listening');
+    $('core-state').textContent = 'STANDBY';
+    $('chat-status').textContent = 'Local speech is starting or unavailable. Retry shortly.';
+    return;
+  }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { voiceMode = false; $('voice').textContent = 'Voice unavailable'; $('chat-status').textContent = 'Voice recognition is unavailable in this browser.'; return; }
   recognition = new Recognition(); recognition.lang = navigator.language || 'en-US'; recognition.interimResults = false; recognition.continuous = true;
@@ -114,7 +124,20 @@ async function startLocalVoice() {
     $('voice').textContent = 'Stop voice control'; $('reactor').classList.add('listening'); $('core-state').textContent = 'WATCHING'; $('core-caption').textContent = 'Say “Jarvis, wake up” or clap twice'; $('chat-status').textContent = 'Local speech listening is active.';
   } catch { voiceMode = false; $('voice').textContent = 'Start voice control'; $('chat-status').textContent = 'Microphone access is required for local speech.'; }
 }
-$('voice').onclick = () => {
+$('voice').onclick = async () => {
+  if (!voiceMode) {
+    $('voice').disabled = true;
+    try {
+      const response = await fetch('/api/session');
+      if (!response.ok) throw new Error('Cannot connect to the local speech service.');
+      session = await response.json();
+      if (/Electron\//.test(navigator.userAgent) && !session.localSpeechReady) {
+        $('chat-status').textContent = 'Local speech is still starting or unavailable. Retry shortly; browser dictation is unavailable in this desktop app.';
+        return;
+      }
+    } catch (error) { $('chat-status').textContent = error.message; return; }
+    finally { $('voice').disabled = false; }
+  }
   voiceMode = !voiceMode; setSpeech(voiceMode);
   if (!voiceMode) { awake = false; clearTimeout(wakeTimer); recognition?.stop(); clearTimeout(localSpeechTimer); localRecorder?.state === 'recording' && localRecorder.stop(); localSpeechStream?.getTracks().forEach(track => track.stop()); localSpeechStream = null; stopWakeAudio(); speechSynthesis?.cancel(); $('voice').textContent = 'Start voice control'; $('reactor').classList.remove('listening'); $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; return; }
   startVoice(); startWakeAudio();

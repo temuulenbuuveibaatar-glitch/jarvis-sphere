@@ -80,7 +80,7 @@ export function validComputerAction(value) {
 function computerAction(action) {
   if (!existsSync(desktopPython)) return Promise.reject(new Error('Computer actions need a configured Python runtime.'));
   return new Promise((resolve, reject) => {
-    const child = spawn(desktopPython, [path.join(helperRoot, 'computer_action.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+    const child = spawn(desktopPython, [path.join(helperRoot, 'computer_action.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
     const output = []; const timer = setTimeout(() => child.kill(), 65000);
     child.stdout.on('data', chunk => output.push(chunk)); child.on('error', reject); child.on('close', code => { clearTimeout(timer); try { const result = JSON.parse(Buffer.concat(output).toString('utf8')); if (code !== 0 || result.error) throw new Error(result.error || 'Action failed.'); resolve(result); } catch (error) { reject(error); } });
     child.stdin.end(JSON.stringify(action));
@@ -94,7 +94,7 @@ async function voiceboxSpeak(text) {
 }
 function startDesktopCompanion() {
   if (process.platform !== 'win32' || !existsSync(desktopPython)) return { ready: false, send() {} };
-  const child = spawn(desktopPython, [path.join(helperRoot, 'desktop_control.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn(desktopPython, [path.join(helperRoot, 'desktop_control.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'] });
   const companion = { ready: false, send(action) { if (child.exitCode === null && companion.ready) child.stdin.write(`${JSON.stringify(action)}\n`); } };
   child.stdout.on('data', chunk => { if (chunk.toString('utf8').includes('"ready":true')) companion.ready = true; });
   child.on('error', () => { companion.ready = false; });
@@ -103,7 +103,7 @@ function startDesktopCompanion() {
 }
 function startTranscriptionCompanion() {
   if (!existsSync(python)) return { ready: false, stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
-  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
+  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
   let buffer = '', pending;
   const companion = { ready: false, stop() { child.kill(); }, transcribe(payload) { return new Promise((resolve, reject) => { if (!companion.ready || pending) return reject(new Error('Local speech is busy.')); pending = { resolve, reject }; child.stdin.write(`${JSON.stringify(payload)}\n`); }); } };
   child.stdout.on('data', chunk => { buffer += chunk; for (const line of buffer.split('\n')) { if (!line.trim()) continue; try { const result = JSON.parse(line); if (result.ready) companion.ready = true; else if (pending) { const { resolve, reject } = pending; pending = undefined; result.error ? reject(new Error(result.error)) : resolve(result); } } catch {} } buffer = buffer.endsWith('\n') ? '' : buffer.slice(buffer.lastIndexOf('\n') + 1); });
@@ -114,7 +114,7 @@ function startTranscriptionCompanion() {
 }
 export function hermesReply(messages, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: root, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
+    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
     const output = []; let bytes = 0;
     const kill = () => child.kill();
     signal?.addEventListener('abort', kill, { once: true });

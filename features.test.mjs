@@ -77,3 +77,18 @@ test('desktop helper starts from its own process directory', async () => {
   child.stdin.end();
   assert.match(ready, /"ready":true/);
 });
+
+test('agent project tracking is explicitly scoped and Telegram remains credential-gated', async () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'jarvis-agent-data-'));
+  const project = mkdtempSync(path.join(tmpdir(), 'jarvis-agent-project-'));
+  process.env.JARVIS_DATA_DIR = dataDir;
+  const agent = await import(`./agent.mjs?test=${Date.now()}`);
+  const saved = agent.addProject(project);
+  assert.equal(saved.path, project);
+  assert.equal(agent.listProjects().length, 1);
+  assert.equal(agent.scanProjects()[0].path, project);
+  assert.throws(() => agent.addProject(path.parse(project).root), /drive root/);
+  const communications = await import(`./communications.mjs?test=${Date.now()}`);
+  await assert.rejects(() => communications.sendChannelMessage('telegram', 'Hello.'), /Telegram bot token/);
+  delete process.env.JARVIS_DATA_DIR;
+});

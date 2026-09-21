@@ -2,6 +2,7 @@ import { ollamaReply, ollamaStatus } from './ollama.mjs';
 import { vertexReply, vertexStatus } from './vertex.mjs';
 import { activities, clearActivities, forget, memories, memoryContext, recordActivity, remember } from './memory.mjs';
 import { communicationStatus, sendChannelMessage } from './communications.mjs';
+import { addProject, listProjects, removeProject, scanProjects } from './agent.mjs';
 import { appendObsidianNote, obsidianStatus, readObsidianNote } from './obsidian.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -75,7 +76,7 @@ export function validDesktopAction(value) {
 }
 export function validComputerAction(value) {
   if (!value || typeof value !== 'object') return false;
-  if (value.action === 'slack_message' || value.action === 'discord_message') return Object.keys(value).sort().join(',') === 'action,text' && typeof value.text === 'string' && value.text.trim().length > 0 && value.text.length <= 1900;
+  if (value.action === 'slack_message' || value.action === 'discord_message' || value.action === 'telegram_message') return Object.keys(value).sort().join(',') === 'action,text' && typeof value.text === 'string' && value.text.trim().length > 0 && value.text.length <= 1900;
   if (value.action === 'open_url') return Object.keys(value).sort().join(',') === 'action,url' && typeof value.url === 'string' && /^https?:\/\//i.test(value.url) && value.url.length <= 2048;
   if (value.action === 'open_app') return Object.keys(value).sort().join(',') === 'action,path' && typeof value.path === 'string' && value.path.length <= 260;
   if (value.action === 'download') return Object.keys(value).sort().join(',') === 'action,name,url' && typeof value.url === 'string' && /^https?:\/\//i.test(value.url) && typeof value.name === 'string' && value.name.length <= 120;
@@ -204,7 +205,21 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
         const result = appendObsidianNote(action.path, action.text); recordActivity('obsidian_sync', result.path); return send(200, result);
       } catch (error) { return send(400, { error: error.message || 'Obsidian sync failed.' }); }
     }
-    if (pathname === '/api/memory') {
+    if (pathname === '/api/agent') {
+      const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
+      if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
+      if (req.method === 'GET') return send(200, { projects: listProjects(), communications: communicationStatus() });
+      if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json') return send(415, { error: 'JSON required.' });
+      const chunks = []; let size = 0;
+      try {
+        for await (const chunk of req) { size += chunk.length; if (size > 4096) return send(413, { error: 'Agent request too large.' }); chunks.push(chunk); }
+        const action = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (action.action === 'add_project') { const result = addProject(action.path); recordActivity('agent_project_added', result.path); return send(200, result); }
+        if (action.action === 'scan_projects') { const projects = scanProjects(); recordActivity('agent_project_scan', `${projects.length} project(s)`); return send(200, { projects }); }
+        if (action.action === 'remove_project' && Number.isInteger(action.id)) { return send(200, { removed: removeProject(action.id) }); }
+        return send(400, { error: 'Unsupported agent action.' });
+      } catch (error) { return send(400, { error: error.message || 'Agent action failed.' }); }
+    }    if (pathname === '/api/memory') {
       const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
       if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
       if (req.method === 'GET') return send(200, { memories: memories(), activities: activities() });
@@ -281,7 +296,7 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
         for await (const chunk of req) { size += chunk.length; if (size > 4096) return send(413, { error: 'Action too large.' }); chunks.push(chunk); }
         const action = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if (!validComputerAction(action)) return send(400, { error: 'Invalid computer action.' });
-        const result = action.action === 'slack_message' ? await sendChannelMessage('slack', action.text) : action.action === 'discord_message' ? await sendChannelMessage('discord', action.text) : await computerAction(action);
+        const result = action.action === 'slack_message' ? await sendChannelMessage('slack', action.text) : action.action === 'discord_message' ? await sendChannelMessage('discord', action.text) : action.action === 'telegram_message' ? await sendChannelMessage('telegram', action.text) : await computerAction(action);
         recordActivity('approved_action', action.action);
         return send(200, result);
       } catch (error) { return send(400, { error: error.message || 'Computer action failed.' }); }
@@ -317,3 +332,4 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const server = createServer(); server.requestTimeout = 15000; server.headersTimeout = 10000;
   server.listen(port, '127.0.0.1', () => console.log(`JARVIS ready: http://127.0.0.1:${port}`));
 }
+

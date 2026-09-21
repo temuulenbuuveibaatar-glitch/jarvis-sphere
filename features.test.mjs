@@ -5,6 +5,19 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+
+test('both interfaces use the local transcription endpoint and command launcher is wired', () => {
+  const root = path.dirname(fileURLToPath(import.meta.url));
+  const sphere = readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
+  const command = readFileSync(path.join(root, 'public', 'command.html'), 'utf8');
+  assert.match(sphere, /startLocalVoice/);
+  assert.match(sphere, /\$\('command'\)\.onclick/);
+  assert.match(sphere, /frame\.getAttribute\('src'\)/);
+  assert.match(command, /LOCAL VOICE/);
+  assert.match(command, /\/api\/transcribe/);
+  assert.doesNotMatch(command, /new SR\(/);
+});
 
 test('local memory and reviewed channel actions stay bounded', async () => {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'jarvis-test-'));

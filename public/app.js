@@ -299,6 +299,13 @@ $('intelligence').onclick = async () => {
     }
   } catch { intelligenceList.textContent = 'Briefings are unavailable. Try again shortly.'; }
 };
+$('osiris').onclick = () => $('intelligence').click();
+$('command').onclick = () => {
+  const frame = $('command-frame');
+  if (!frame.getAttribute('src')) frame.src = '/command.html';
+  $('command-dialog').showModal();
+};
+$('close-command').onclick = () => $('command-dialog').close();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 import './sphere.js';
 let briefingFeeds;

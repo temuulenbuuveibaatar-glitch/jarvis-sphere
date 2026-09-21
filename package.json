@@ -1,60 +1,48 @@
 {
   "name": "jarvis-local",
-  "version": "1.0.8",
+  "version": "1.1.3",
   "private": true,
   "type": "module",
   "main": "electron-main.mjs",
   "scripts": {
-    "start": "node server.mjs",
-    "desktop": "electron .",
-    "test": "node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.mjs",
-    "setup": "node scripts/setup.mjs",
-    "predist": "npm run setup",
-    "dist": "electron-builder --publish never"
+    "test": "node --test *.test.mjs",
+    "dist": "electron-builder --win nsis --x64"
   },
   "dependencies": {
+    "@google/genai": "^2.23.0",
     "@mediapipe/tasks-vision": "1.0.1"
   },
   "devDependencies": {
-    "electron": "^40.10.6",
-    "electron-builder": "^26.15.3"
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.temuulenbuuveibaatar.jarvissphere",
+    "appId": "com.jarvis.local",
     "productName": "JARVIS Sphere",
-    "files": [
-      "public/**/*",
-      "server.mjs",
-      "hermes_bridge.py",
-      "computer_action.py",
-      "desktop_control.py",
-      "transcribe_audio.py",
-      "electron-main.mjs",
-      "package.json"
-    ],
+    "artifactName": "JARVIS-Sphere-Setup-${version}.${ext}",
+    "asar": true,
     "asarUnpack": [
       "*.py"
     ],
+    "files": [
+      "**/*",
+      "!release{,/**}",
+      "!.agents{,/**}",
+      "!.claude{,/**}",
+      "!.claude-flow{,/**}",
+      "!.codex{,/**}",
+      "!.playwright-cli{,/**}",
+      "!.swarm{,/**}",
+      "!*.test.mjs"
+    ],
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
+      "target": "nsis",
+      "artifactName": "JARVIS-Sphere-Setup-${version}.${ext}"
     },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        }
-      ]
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }

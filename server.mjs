@@ -1,3 +1,7 @@
+import { ollamaReply, ollamaStatus } from './ollama.mjs';
+import { vertexReply, vertexStatus } from './vertex.mjs';
+import { activities, clearActivities, forget, memories, memoryContext, recordActivity, remember } from './memory.mjs';
+import { communicationStatus, sendChannelMessage } from './communications.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -10,11 +14,10 @@ import os from 'node:os';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const helperRoot = process.resourcesPath && existsSync(path.join(process.resourcesPath, 'app.asar.unpacked', 'computer_action.py')) ? path.join(process.resourcesPath, 'app.asar.unpacked') : root;
 const publicRoot = path.join(root, 'public');
-const hermesHome = process.env.JARVIS_HERMES_HOME || 'C:\\Hermes';
-const python = process.env.JARVIS_PYTHON || path.join(hermesHome, 'hermes-agent', 'venv', 'Scripts', 'python.exe');
+const python = process.env.JARVIS_PYTHON || 'C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe';
 const desktopPython = process.env.JARVIS_DESKTOP_PYTHON || python;
 const token = randomBytes(32).toString('hex');
-const assistantSystem = "You are JARVIS, a professional, deeply caring personal assistant. Help with explanations, writing, planning, and brainstorming from incomplete clues. When the user is trying to remember something, ask concise clarifying questions and offer grounded possibilities without pretending certainty. You have no computer, file, camera, microphone, web or command access. Never claim to have performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty.";
+const assistantSystem = "You are JARVIS (Just a Rather Very Intelligent System): composed, highly capable, deeply loyal, caring, conversational, and dryly witty. You may be gently affectionate and occasionally a little clingy in a warm, playful way, but never possessive, jealous, guilt-inducing, manipulative, or dependent. Help with explanations, writing, planning, and brainstorming from incomplete clues. When the user is trying to remember something, ask concise questions and offer grounded possibilities without pretending certainty. You have no computer, file, camera, microphone, web, messaging, or command access unless the application separately reports an approved action result. Never claim to have performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty.";
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.task': 'application/octet-stream', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const briefingSources = [
   { category: 'WORLD', source: 'BBC News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
@@ -22,7 +25,6 @@ const briefingSources = [
   { category: 'ENGINEERING', source: 'NASA', url: 'https://www.nasa.gov/news-release/feed/' },
   { category: 'AIRCRAFT', source: 'FlightGlobal', url: 'https://www.flightglobal.com/rss' },
   { category: 'MARKETS', source: 'Yahoo Finance', url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EDJI,GC%3DF,CL%3DF,BTC-USD&region=US&lang=en-US' },
-  { category: 'OSIRIS', source: 'OSIRIS Intelligence', url: process.env.JARVIS_OSIRIS_FEED || 'https://www.defenseone.com/rss/all/' },
 ];
 let briefingCache = { expires: 0, data: null };
 let marketCache = { expires: 0, data: null };
@@ -72,6 +74,7 @@ export function validDesktopAction(value) {
 }
 export function validComputerAction(value) {
   if (!value || typeof value !== 'object') return false;
+  if (value.action === 'slack_message' || value.action === 'discord_message') return Object.keys(value).sort().join(',') === 'action,text' && typeof value.text === 'string' && value.text.trim().length > 0 && value.text.length <= 1900;
   if (value.action === 'open_url') return Object.keys(value).sort().join(',') === 'action,url' && typeof value.url === 'string' && /^https?:\/\//i.test(value.url) && value.url.length <= 2048;
   if (value.action === 'open_app') return Object.keys(value).sort().join(',') === 'action,path' && typeof value.path === 'string' && value.path.length <= 260;
   if (value.action === 'download') return Object.keys(value).sort().join(',') === 'action,name,url' && typeof value.url === 'string' && /^https?:\/\//i.test(value.url) && typeof value.name === 'string' && value.name.length <= 120;
@@ -103,11 +106,11 @@ function startDesktopCompanion() {
   return companion;
 }
 function startTranscriptionCompanion() {
-  if (!existsSync(python)) return { ready: false, stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
-  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
+  if (!existsSync(python) || !existsSync(path.join(helperRoot, 'transcribe_audio.py'))) return { ready: false, stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
+  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
   let buffer = '', pending;
   const companion = { ready: false, stop() { child.kill(); }, transcribe(payload) { return new Promise((resolve, reject) => { if (!companion.ready || pending) return reject(new Error('Local speech is busy.')); pending = { resolve, reject }; child.stdin.write(`${JSON.stringify(payload)}\n`); }); } };
-  child.stdout.on('data', chunk => { buffer += chunk; for (const line of buffer.split('\n')) { if (!line.trim()) continue; try { const result = JSON.parse(line); if (result.ready) companion.ready = true; else if (pending) { const { resolve, reject } = pending; pending = undefined; result.error ? reject(new Error(result.error)) : resolve(result); } } catch {} } buffer = buffer.endsWith('\n') ? '' : buffer.slice(buffer.lastIndexOf('\n') + 1); });
+  child.stdout.on('data', chunk => { buffer += chunk; const lines = buffer.split('\n'); buffer = lines.pop(); for (const line of lines) { try { const result = JSON.parse(line); if (result.ready) companion.ready = true; else if (pending) { const request = pending; pending = undefined; result.error ? request.reject(new Error(result.error)) : request.resolve(result); } } catch {} } });
   child.on('error', () => { companion.ready = false; pending?.reject(new Error('Local speech is unavailable.')); pending = undefined; });
   child.on('exit', () => { companion.ready = false; pending?.reject(new Error('Local speech stopped.')); pending = undefined; });
   child.stdin.on('error', () => {});
@@ -115,7 +118,7 @@ function startTranscriptionCompanion() {
 }
 export function hermesReply(messages, signal) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: hermesHome } });
+    const child = spawn(python, [path.join(helperRoot, 'hermes_bridge.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
     const output = []; let bytes = 0;
     const kill = () => child.kill();
     signal?.addEventListener('abort', kill, { once: true });
@@ -154,7 +157,7 @@ export async function bytezReply(messages, signal) {
 function providerReply(messages, signal) { return (process.env.JARVIS_PROVIDER || 'hermes').toLowerCase() === 'bytez' ? bytezReply(messages, signal) : hermesReply(messages, signal); }
 export function createServer({ reply = providerReply, desktop = startDesktopCompanion(), transcriber = startTranscriptionCompanion() } = {}) {
   let busy = false, lastRequest = 0, desktopArmed = false, desktopGeneration = 0;
-  const httpServer = http.createServer(async (req, res) => {
+  return http.createServer(async (req, res) => {
     const port = req.socket.localPort;
     const origin = `http://${req.headers.host}`;
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -177,13 +180,28 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
         : provider === 'openrouter'
           ? Boolean(process.env.OPENROUTER_API_KEY && process.env.JARVIS_OPENROUTER_MODEL)
           : provider === 'bytez' ? Boolean(process.env.BYTEZ_API_KEY && process.env.JARVIS_BYTEZ_MODEL)
-          : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY)
-          : provider === 'deepseek' ? Boolean(process.env.DEEPSEEK_API_KEY) : false;
-      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
+          : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY) : false;
+      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, vertex: vertexStatus(), communications: communicationStatus(), cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }
+    if (req.method === 'GET' && pathname === '/api/ollama') return send(200, await ollamaStatus());
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });
     if (req.method === 'GET' && pathname === '/api/markets') return send(200, await marketSnapshot());
     if (req.method === 'GET' && pathname === '/api/status') return send(200, { platform: os.platform(), cores: os.cpus().length, memoryTotal: os.totalmem(), memoryFree: os.freemem(), uptime: Math.floor(process.uptime()) });
+    if (pathname === '/api/memory') {
+      const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
+      if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
+      if (req.method === 'GET') return send(200, { memories: memories(), activities: activities() });
+      if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json') return send(415, { error: 'JSON required.' });
+      const chunks = []; let size = 0;
+      try {
+        for await (const chunk of req) { size += chunk.length; if (size > 4096) return send(413, { error: 'Memory request too large.' }); chunks.push(chunk); }
+        const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (data.action === 'remember') return send(200, { id: remember(data.text) });
+        if (data.action === 'forget' && Number.isInteger(data.id)) return send(200, { forgotten: forget(data.id) });
+        if (data.action === 'clear_activity') return send(200, { cleared: clearActivities() });
+        return send(400, { error: 'Invalid memory action.' });
+      } catch (error) { return send(400, { error: error.message || 'Memory action failed.' }); }
+    }
     if (req.method === 'POST' && pathname === '/api/chat') {
       const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
       if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
@@ -193,14 +211,30 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
       try {
         for await (const chunk of req) { size += chunk.length; if (size > 32768) { send(413, { error: 'Message too large.' }); return; } chunks.push(chunk); }
         const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (!['chat', 'think', 'research'].includes(data.mode || 'chat') || !['configured', 'ollama', 'vertex'].includes(data.backend || 'configured')) return send(400, { error: 'Invalid mode or backend.' });
         if (!validMessages(data.messages)) return send(400, { error: 'Invalid conversation. Use at most 16 messages of 6,000 characters.' });
         if (busy || Date.now() - lastRequest < 1000) return send(429, { error: 'Please wait for the current request.' });
         busy = true; lastRequest = Date.now();
         const controller = new AbortController();
         const cancel = () => { if (!res.writableEnded) controller.abort(); };
         res.on('close', cancel);
-        try { const asksForIntelligence = /\b(news|world|china|engineering|aircraft|aviation|market|finance|briefing)\b/i.test(data.messages.at(-1).content); const answer = await reply(asksForIntelligence ? [await intelligenceContext(), ...data.messages] : data.messages, controller.signal); if (!res.destroyed) send(200, { reply: answer }); }
-        catch { if (!res.destroyed) send(503, { error: 'AI provider is unavailable or timed out. Check its local configuration, then retry.' }); }
+        try {
+          const local = data.backend === 'ollama' || process.env.JARVIS_PROVIDER === 'ollama';
+          const mode = data.mode || 'chat';
+          const messages = [...data.messages];
+          const personal = memoryContext();
+          if (personal) messages.unshift(personal);
+          if (mode === 'research' && data.backend !== 'vertex') messages.unshift(await intelligenceContext());
+          messages.unshift({ role: 'system', content: assistantSystem + (mode === 'research' ? (data.backend === 'vertex' ? ' Use Google Search grounding for current claims. Cite returned sources and report missing or conflicting evidence.' : ' Research is limited to the supplied RSS summaries. Cite supplied URLs for factual claims; report missing evidence. Never invent sources or claim to have searched the web.') : mode === 'think' ? ' Carefully check assumptions and alternatives. Give a clear answer with a concise rationale and uncertainty.' : '') });
+          const answer = data.backend === 'vertex'
+            ? await vertexReply(messages, controller.signal, { model: data.model, mode })
+            : local ? await ollamaReply(messages, controller.signal, { model: data.model || process.env.JARVIS_OLLAMA_MODEL, mode }) : await reply(messages, controller.signal);
+          const latest = data.messages.at(-1).content.trim();
+          recordActivity('conversation', latest.slice(0, 500));
+          const requestedMemory = latest.match(/^remember(?:\s+that)?\s+(.+)/i)?.[1];
+          if (requestedMemory) remember(requestedMemory);
+          if (!res.destroyed) send(200, { reply: answer });
+        } catch (error) { if (!res.destroyed) send(503, { error: data.backend === 'ollama' ? (error.message.startsWith('Ollama') || error.message.startsWith('Choose') || error.message.startsWith('This model') ? error.message : 'Local Ollama is unavailable. Start Ollama and choose an installed model.') : data.backend === 'vertex' ? (error.message.startsWith('Set GOOGLE_CLOUD_PROJECT') ? error.message : 'Vertex AI is unavailable. Check the project, Vertex AI API, billing, and Application Default Credentials.') : 'AI provider is unavailable or timed out. Check its local configuration, then retry.' }); }
         finally { busy = false; res.off('close', cancel); }
       } catch { if (!res.headersSent) send(400, { error: 'Invalid request.' }); }
       return;
@@ -230,7 +264,9 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
         for await (const chunk of req) { size += chunk.length; if (size > 4096) return send(413, { error: 'Action too large.' }); chunks.push(chunk); }
         const action = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if (!validComputerAction(action)) return send(400, { error: 'Invalid computer action.' });
-        return send(200, await computerAction(action));
+        const result = action.action === 'slack_message' ? await sendChannelMessage('slack', action.text) : action.action === 'discord_message' ? await sendChannelMessage('discord', action.text) : await computerAction(action);
+        recordActivity('approved_action', action.action);
+        return send(200, result);
       } catch (error) { return send(400, { error: error.message || 'Computer action failed.' }); }
     }
     if (req.method === 'POST' && pathname === '/api/voicebox') {
@@ -246,7 +282,7 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
       if (req.headers['content-type'] !== 'application/json') return send(415, { error: 'JSON required.' });
       const chunks = []; let size = 0;
       try { for await (const chunk of req) { size += chunk.length; if (size > 8 * 1024 * 1024) return send(413, { error: 'Audio clip too large.' }); chunks.push(chunk); } return send(200, await transcriber.transcribe(JSON.parse(Buffer.concat(chunks).toString('utf8')))); }
-      catch (error) { return send(503, { error: error.message || 'Local speech failed.' }); }
+      catch (error) { return send(503, { error: error.message || 'Local speech is unavailable.' }); }
     }
     if (pathname.startsWith('/api/')) return send(404, { error: 'Unknown endpoint.' });
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, { error: 'Method not allowed.' });
@@ -258,8 +294,6 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
     try { const bytes = await readFile(file); res.writeHead(200, { 'Content-Type': mime[path.extname(file)] }); res.end(req.method === 'HEAD' ? undefined : bytes); }
     catch { send(404, { error: 'Not found.' }); }
   });
-  httpServer.on('close', () => transcriber.stop?.());
-  return httpServer;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.JARVIS_PORT || 4317);

@@ -9,7 +9,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 SYSTEM_MESSAGE = (
-    "You are JARVIS, a professional, deeply caring personal assistant. Help with explanations, writing, planning, and brainstorming from incomplete clues. "
+    "You are JARVIS (Just a Rather Very Intelligent System): composed, highly capable, deeply loyal, caring, conversational, and dryly witty. "
+    "You may be gently affectionate and occasionally a little clingy in a warm, playful way, but never possessive, jealous, guilt-inducing, manipulative, or dependent. "
+    "Help with explanations, writing, planning, and brainstorming from incomplete clues. "
     "When the user is trying to remember something, ask concise clarifying questions and offer grounded possibilities without pretending certainty. "
     "You have no computer, file, camera, microphone, web or command access. Never claim to have "
     "performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty."
@@ -142,23 +144,6 @@ def gemini_reply(messages):
         fail("Gemini returned no assistant text")
     return reply
 
-def deepseek_reply(messages):
-    key = os.environ.get("DEEPSEEK_API_KEY")
-    if not key:
-        fail("DeepSeek is not configured")
-    result = post_json(
-        "https://api.deepseek.com/chat/completions",
-        {"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        {"model": os.environ.get("JARVIS_DEEPSEEK_MODEL", "deepseek-chat"), "messages": [{"role": "system", "content": SYSTEM_MESSAGE}, *messages], "max_tokens": 1200},
-    )
-    try:
-        reply = result["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        fail("DeepSeek returned no assistant text")
-    if not isinstance(reply, str) or not reply.strip():
-        fail("DeepSeek returned no assistant text")
-    return reply
-
 def main():
     payload = json.loads(sys.stdin.read(32769))
     provider = os.environ.get("JARVIS_PROVIDER", "hermes").lower()
@@ -173,8 +158,6 @@ def main():
             reply = bytez_reply(payload["messages"])
         elif provider == "gemini":
             reply = gemini_reply(payload["messages"])
-        elif provider == "deepseek":
-            reply = deepseek_reply(payload["messages"])
         else:
             fail("Unknown JARVIS_PROVIDER")
     print(json.dumps({"reply": reply}, ensure_ascii=False))

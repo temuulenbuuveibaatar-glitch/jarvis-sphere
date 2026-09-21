@@ -1,14 +1,15 @@
 import { app, BrowserWindow, shell, session } from 'electron';
-import { createServer } from './server.mjs';
 
 let server;
-function startServer() {
+async function startServer() {
+  const { createServer } = await import('./server.mjs');
   return new Promise((resolve, reject) => {
     server = createServer(); server.requestTimeout = 15000; server.headersTimeout = 10000;
     server.once('error', reject); server.listen(0, '127.0.0.1', () => resolve(server.address().port));
   });
 }
 async function createWindow() {
+  process.env.JARVIS_DATA_DIR ||= app.getPath('userData');
   const port = await startServer();
   const window = new BrowserWindow({ width: 1440, height: 920, minWidth: 980, minHeight: 680, backgroundColor: '#030609', webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
   window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });

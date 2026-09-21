@@ -311,7 +311,8 @@ $('intelligence').onclick = async () => {
     }
   } catch { intelligenceList.textContent = 'Briefings are unavailable. Try again shortly.'; }
 };
-$('osiris').onclick = () => $('intelligence').click();
+$('osiris').onclick = () => window.open('http://127.0.0.1:3000', '_blank', 'noopener');
+$('god-eye').onclick = () => window.open('http://127.0.0.1:4173', '_blank', 'noopener');
 $('command').onclick = () => {
   const frame = $('command-frame');
   if (!frame.getAttribute('src')) frame.src = '/command.html';
@@ -403,5 +404,6 @@ document.body.append(toolbar);
 const voiceStatus = document.createElement('p'); voiceStatus.id='voice-status'; voiceStatus.setAttribute('role','status');
 $('voice').closest('.core-controls').after(voiceStatus);
 new MutationObserver(() => { voiceStatus.textContent=$('chat-status').textContent; }).observe($('chat-status'), {childList:true,subtree:true,characterData:true});
+
 
 

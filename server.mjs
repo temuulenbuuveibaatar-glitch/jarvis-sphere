@@ -2,6 +2,7 @@ import { ollamaReply, ollamaStatus } from './ollama.mjs';
 import { vertexReply, vertexStatus } from './vertex.mjs';
 import { activities, clearActivities, forget, memories, memoryContext, recordActivity, remember } from './memory.mjs';
 import { communicationStatus, sendChannelMessage } from './communications.mjs';
+import { appendObsidianNote, obsidianStatus, readObsidianNote } from './obsidian.mjs';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -161,7 +162,7 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
     const port = req.socket.localPort;
     const origin = `http://${req.headers.host}`;
     const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'");
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
@@ -187,6 +188,22 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });
     if (req.method === 'GET' && pathname === '/api/markets') return send(200, await marketSnapshot());
     if (req.method === 'GET' && pathname === '/api/status') return send(200, { platform: os.platform(), cores: os.cpus().length, memoryTotal: os.totalmem(), memoryFree: os.freemem(), uptime: Math.floor(process.uptime()) });
+    if (pathname === '/api/obsidian') {
+      const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
+      if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
+      if (req.method === 'GET') {
+        try { return send(200, new URL(req.url, origin).searchParams.get('path') ? readObsidianNote(new URL(req.url, origin).searchParams.get('path')) : obsidianStatus()); }
+        catch (error) { return send(400, { error: error.message || 'Obsidian vault is unavailable.' }); }
+      }
+      if (req.method !== 'POST' || req.headers['content-type'] !== 'application/json') return send(415, { error: 'JSON required.' });
+      const chunks = []; let size = 0;
+      try {
+        for await (const chunk of req) { size += chunk.length; if (size > 20000) return send(413, { error: 'Obsidian request too large.' }); chunks.push(chunk); }
+        const action = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        if (action.action !== 'append') return send(400, { error: 'Unsupported Obsidian action.' });
+        const result = appendObsidianNote(action.path, action.text); recordActivity('obsidian_sync', result.path); return send(200, result);
+      } catch (error) { return send(400, { error: error.message || 'Obsidian sync failed.' }); }
+    }
     if (pathname === '/api/memory') {
       const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
       if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });

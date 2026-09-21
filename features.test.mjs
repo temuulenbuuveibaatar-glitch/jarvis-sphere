@@ -11,12 +11,27 @@ test('both interfaces use the local transcription endpoint and command launcher 
   const root = path.dirname(fileURLToPath(import.meta.url));
   const sphere = readFileSync(path.join(root, 'public', 'app.js'), 'utf8');
   const command = readFileSync(path.join(root, 'public', 'command.html'), 'utf8');
+  const commandScript = readFileSync(path.join(root, 'public', 'command.js'), 'utf8');
   assert.match(sphere, /startLocalVoice/);
   assert.match(sphere, /\$\('command'\)\.onclick/);
   assert.match(sphere, /frame\.getAttribute\('src'\)/);
-  assert.match(command, /LOCAL VOICE/);
-  assert.match(command, /\/api\/transcribe/);
-  assert.doesNotMatch(command, /new SR\(/);
+  assert.doesNotMatch(sphere, /command\.css/);
+  assert.match(sphere, /\['notes','Memory'\]/);
+  assert.match(commandScript, /LOCAL VOICE/);
+  assert.match(command, /<script src="\/command\.js"><\/script>/);
+  assert.match(commandScript, /\/api\/transcribe/);
+  assert.doesNotMatch(commandScript, /new SR\(/);
+});
+
+test('Obsidian vault is local, bounded, and cannot escape its root', async () => {
+  const vault = mkdtempSync(path.join(tmpdir(), 'jarvis-vault-'));
+  process.env.JARVIS_OBSIDIAN_VAULT = vault;
+  const obsidian = await import(`./obsidian.mjs?test=${Date.now()}`);
+  assert.equal(obsidian.obsidianStatus().ready, true);
+  assert.deepEqual(obsidian.appendObsidianNote('Jarvis/test.md', 'Private note.'), { path: 'Jarvis/test.md' });
+  assert.match(obsidian.readObsidianNote('Jarvis/test.md').text, /Private note/);
+  assert.throws(() => obsidian.appendObsidianNote('../escape.md', 'blocked'), /Obsidian path is outside the vault/);
+  delete process.env.JARVIS_OBSIDIAN_VAULT;
 });
 
 test('local memory and reviewed channel actions stay bounded', async () => {
@@ -37,6 +52,8 @@ test('local memory and reviewed channel actions stay bounded', async () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     const session = await (await fetch(`${base}/api/session`)).json();
+    const command = await fetch(`${base}/command.html`);
+    assert.match(command.headers.get('content-security-policy'), /frame-ancestors 'self'/);
     assert.equal(session.localSpeechReady, true);
     const headers = { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token };
     let response = await fetch(`${base}/api/memory`, { method: 'POST', headers, body: JSON.stringify({ action: 'remember', text: 'Use concise briefings.' }) });

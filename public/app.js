@@ -6,8 +6,6 @@ let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = fa
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
 const sphereTheme = document.querySelector('link[href^="/sphere.css"]');
-const commandTheme = document.createElement('link');
-commandTheme.rel = 'stylesheet'; commandTheme.href = '/command.css'; document.head.append(commandTheme);
 const uiMode = document.createElement('button');
 uiMode.id = 'ui-mode'; uiMode.className = 'text-button'; uiMode.type = 'button'; uiMode.setAttribute('aria-label', 'Switch interface mode');
 document.querySelector('.header-right')?.insertBefore(uiMode, $('fullscreen'));
@@ -28,7 +26,7 @@ function message(role, text, error = false) {
   article.append(label, content); $('messages').append(article); article.scrollIntoView({ block: 'nearest' });
 }
 async function connect() {
-  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; }
+  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; connectObsidian(); }
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();
@@ -265,6 +263,20 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sto
 window.addEventListener('pagehide', () => { stopCamera(); controller?.abort(); recognition?.stop(); stopWakeAudio(); window.speechSynthesis?.cancel(); });
 $('notes').value = readLocal('jarvis.notes') || '';
 $('notes').oninput = () => { $('notes-status').textContent = writeLocal('jarvis.notes', $('notes').value) ? 'SAVED ON THIS DEVICE' : 'STORAGE UNAVAILABLE · COPY YOUR NOTES'; };
+async function connectObsidian() {
+  if (!session) return;
+  try { const response = await fetch('/api/obsidian', { headers: { 'X-Jarvis-Token': session.token } }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('obsidian-status').textContent = `OBSIDIAN READY · ${data.notes.length} NOTES`; }
+  catch { $('obsidian-status').textContent = 'OBSIDIAN VAULT UNAVAILABLE'; }
+}
+$('sync-obsidian').onclick = async () => {
+  if (!session) return;
+  const text = $('notes').value.trim();
+  if (!text) { $('notes-status').textContent = 'WRITE A NOTE BEFORE SYNCING'; return; }
+  $('sync-obsidian').disabled = true;
+  try { const day = new Date().toISOString().slice(0, 10); const response = await fetch('/api/obsidian', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'append', path: `Jarvis/${day}.md`, text: `## ${new Date().toLocaleTimeString()}\n\n${text}` }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('obsidian-status').textContent = `SAVED · ${data.path}`; }
+  catch (error) { $('obsidian-status').textContent = error.message || 'OBSIDIAN SYNC FAILED'; }
+  finally { $('sync-obsidian').disabled = false; }
+};
 let remaining = 25 * 60, deadline = null;
 function drawTimer() { if (deadline) { remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)); if (!remaining) { deadline = null; $('focus').textContent = 'Start focus'; $('chat-status').textContent = 'Focus session complete. Take a short break.'; } } $('timer').textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`; }
 $('focus').onclick = () => { if (deadline) { drawTimer(); deadline = null; $('focus').textContent = 'Resume'; } else { if (!remaining) remaining = 1500; deadline = Date.now() + remaining * 1000; $('focus').textContent = 'Pause'; } };
@@ -361,7 +373,7 @@ $('approve-computer').onclick = async () => {
 const toolbar = document.createElement('nav');
 toolbar.className = 'drawer-toolbar';
 toolbar.setAttribute('aria-label', 'Controls');
-for (const [name, label] of [['chat','Conversation'],['air','Air touch'],['computer','Computer']]) {
+for (const [name, label] of [['chat','Conversation'],['notes','Memory'],['air','Air touch'],['computer','Computer']]) {
   const button = document.createElement('button'); button.textContent = label;
   button.onclick = () => { if (name === 'computer') $('computer-dialog').showModal(); else document.body.dataset.drawer = document.body.dataset.drawer === name ? '' : name; };
   toolbar.append(button);

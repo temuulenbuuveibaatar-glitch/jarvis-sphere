@@ -318,6 +318,26 @@ $('command').onclick = () => {
   $('command-dialog').showModal();
 };
 $('close-command').onclick = () => $('command-dialog').close();
+$('agent').onclick = () => { $('agent-dialog').showModal(); loadAgentProjects(); };
+$('close-agent').onclick = () => $('agent-dialog').close();
+async function loadAgentProjects(scan = false) {
+  if (!session) return;
+  try {
+    const response = await fetch('/api/agent', scan ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'scan_projects' }) } : { headers: { 'X-Jarvis-Token': session.token } });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    const projects = data.projects || []; $('agent-projects').replaceChildren(...projects.map(project => { const item = document.createElement('article'); item.className = 'agent-project'; const title = document.createElement('strong'); title.textContent = project.name; const detail = document.createElement('small'); detail.textContent = `${project.path}\n${project.summary || project.lastSummary || ''}`; item.append(title, detail); return item; }));
+    if (!projects.length) $('agent-projects').textContent = 'No local projects added.';
+    const channels = data.communications || session.communications || {}; $('agent-channel-status').textContent = `Alerts: Slack ${channels.slack ? 'ready' : 'needs setup'} · Telegram ${channels.telegram ? 'ready' : 'needs setup'}`;
+  } catch (error) { $('agent-projects').textContent = error.message || 'Agent workspace unavailable.'; }
+}
+$('add-agent-project').onclick = async () => {
+  const projectPath = $('agent-project-path').value.trim(); if (!projectPath || !session) return;
+  $('add-agent-project').disabled = true;
+  try { const response = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'add_project', path: projectPath }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('agent-project-path').value = ''; await loadAgentProjects(); }
+  catch (error) { $('agent-projects').textContent = error.message || 'Could not add project.'; }
+  finally { $('add-agent-project').disabled = false; }
+};
+$('scan-agent-projects').onclick = () => loadAgentProjects(true);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 import './sphere.js';
 let briefingFeeds;
@@ -348,11 +368,12 @@ window.addEventListener('sphere-preview', event => showPreview(event.detail));
 $('close-briefing').onclick = () => $('briefing-dialog').close();
 let pendingComputerAction;
 function computerFields() {
-  const kind = $('computer-kind').value, labels = { open_url: ['Website URL', 'https://example.com'], open_app: ['Application path', 'C:\\Program Files\\App\\App.exe'], download: ['Download URL', 'https://example.com/file.pdf'], find: ['File name fragment', 'report'], run_command: ['Command and arguments', 'git status'] };
+  const kind = $('computer-kind').value, labels = { open_url: ['Website URL', 'https://example.com'], open_app: ['Application path', 'C:\\Program Files\\App\\App.exe'], download: ['Download URL', 'https://example.com/file.pdf'], find: ['File name fragment', 'report'], run_command: ['Command and arguments', 'git status'], slack_message: ['Slack message', 'Status update from JARVIS'], telegram_message: ['Telegram message', 'Status update from JARVIS'] };
   $('computer-main-label').childNodes[0].nodeValue = `${labels[kind][0]} `; $('computer-main').placeholder = labels[kind][1]; $('computer-extra-label').hidden = kind !== 'download';
 }
 function actionFromForm() {
   const kind = $('computer-kind').value, main = $('computer-main').value.trim();
+  if (kind === 'slack_message' || kind === 'telegram_message') return { action: kind, text: main };
   if (kind === 'open_url') return { action: kind, url: main };
   if (kind === 'open_app') return { action: kind, path: main };
   if (kind === 'download') return { action: kind, url: main, name: $('computer-extra').value.trim() };
@@ -382,3 +403,5 @@ document.body.append(toolbar);
 const voiceStatus = document.createElement('p'); voiceStatus.id='voice-status'; voiceStatus.setAttribute('role','status');
 $('voice').closest('.core-controls').after(voiceStatus);
 new MutationObserver(() => { voiceStatus.textContent=$('chat-status').textContent; }).observe($('chat-status'), {childList:true,subtree:true,characterData:true});
+
+

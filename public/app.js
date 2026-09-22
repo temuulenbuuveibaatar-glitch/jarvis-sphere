@@ -354,7 +354,7 @@ async function loadAgentProjects(scan = false) {
     const data = await response.json(); if (!response.ok) throw new Error(data.error);
     const projects = data.projects || []; $('agent-projects').replaceChildren(...projects.map(project => { const item = document.createElement('article'); item.className = 'agent-project'; const title = document.createElement('strong'); title.textContent = project.name; const detail = document.createElement('small'); detail.textContent = `${project.path}\n${project.summary || project.lastSummary || ''}`; item.append(title, detail); return item; }));
     if (!projects.length) $('agent-projects').textContent = 'No local projects added.';
-    const channels = data.communications || session.communications || {}; $('agent-channel-status').textContent = `Alerts: Slack ${channels.slack ? 'ready' : 'needs setup'} · Telegram ${channels.telegram ? 'ready' : 'needs setup'}`;
+    const channels = data.communications || session.communications || {}; $('agent-channel-status').textContent = `Alerts: Slack ${channels.slack ? 'ready' : 'needs setup'} · Discord ${channels.discord ? 'ready' : 'needs setup'} · Telegram ${channels.telegram ? 'ready' : 'needs setup'}`;
   } catch (error) { $('agent-projects').textContent = error.message || 'Agent workspace unavailable.'; }
 }
 $('add-agent-project').onclick = async () => {
@@ -395,7 +395,7 @@ window.addEventListener('sphere-preview', event => showPreview(event.detail));
 $('close-briefing').onclick = () => $('briefing-dialog').close();
 let pendingComputerAction;
 function computerFields() {
-  const kind = $('computer-kind').value, labels = { open_url: ['Website URL', 'https://example.com'], open_app: ['Application path', 'C:\\Program Files\\App\\App.exe'], download: ['Download URL', 'https://example.com/file.pdf'], find: ['File name fragment', 'report'], run_command: ['Command and arguments', 'git status'], slack_message: ['Slack message', 'Status update from JARVIS'], telegram_message: ['Telegram message', 'Status update from JARVIS'] };
+  const kind = $('computer-kind').value, labels = { open_url: ['Website URL', 'https://example.com'], open_app: ['Application path', 'C:\\Program Files\\App\\App.exe'], download: ['Download URL', 'https://example.com/file.pdf'], find: ['File name fragment', 'report'], run_command: ['Command and arguments', 'git status'], slack_message: ['Slack message', 'Status update from JARVIS'], discord_message: ['Discord message', 'Status update from JARVIS'], telegram_message: ['Telegram message', 'Status update from JARVIS'] };
   $('computer-main-label').childNodes[0].nodeValue = `${labels[kind][0]} `; $('computer-main').placeholder = labels[kind][1]; $('computer-extra-label').hidden = kind !== 'download';
 }
 function actionFromForm() {

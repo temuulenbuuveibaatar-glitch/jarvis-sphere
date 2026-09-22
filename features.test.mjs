@@ -21,6 +21,8 @@ test('both interfaces use the local transcription endpoint and command launcher 
   assert.match(command, /<script src="\/command\.js"><\/script>/);
   assert.match(commandScript, /\/api\/transcribe/);
   assert.doesNotMatch(commandScript, /new SR\(/);
+  const dashboard = readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+  assert.match(dashboard, /discord_message/);
   assert.ok(sphere.includes("if (/Electron\\//.test(navigator.userAgent))"));
   assert.match(sphere, /session\?\.localSpeechReady\) return startLocalVoice/);
 });

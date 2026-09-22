@@ -21,6 +21,16 @@ test('both interfaces use the local transcription endpoint and command launcher 
   assert.match(command, /<script src="\/command\.js"><\/script>/);
   assert.match(commandScript, /\/api\/transcribe/);
   assert.doesNotMatch(commandScript, /new SR\(/);
+  assert.ok(sphere.includes("if (/Electron\\//.test(navigator.userAgent))"));
+  assert.match(sphere, /session\?\.localSpeechReady\) return startLocalVoice/);
+});
+
+test('transcription companion reports startup failures instead of claiming readiness', async () => {
+  const { startTranscriptionCompanion } = await import(`./server.mjs?voice-test=${Date.now()}`);
+  const companion = startTranscriptionCompanion({ executable: 'C:\\missing-python.exe' });
+  assert.equal(companion.ready, false);
+  assert.match(companion.error, /runtime is unavailable/i);
+  await assert.rejects(() => companion.transcribe({ audio: '' }), /Local speech is unavailable/);
 });
 
 test('Obsidian vault is local, bounded, and cannot escape its root', async () => {
@@ -56,7 +66,12 @@ test('local memory and reviewed channel actions stay bounded', async () => {
     assert.match(command.headers.get('content-security-policy'), /frame-ancestors 'self'/);
     assert.equal(session.localSpeechReady, true);
     const headers = { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token };
-    let response = await fetch(`${base}/api/memory`, { method: 'POST', headers, body: JSON.stringify({ action: 'remember', text: 'Use concise briefings.' }) });
+    let response = await fetch(`${base}/api/integrations`, { headers });
+    assert.equal(response.status, 200);
+    const integrations = await response.json();
+    assert.equal(typeof integrations.local.osiris.ready, 'boolean');
+    assert.equal(typeof integrations.local.godEye.ready, 'boolean');
+    response = await fetch(`${base}/api/memory`, { method: 'POST', headers, body: JSON.stringify({ action: 'remember', text: 'Use concise briefings.' }) });
     assert.equal(response.status, 200);
     response = await fetch(`${base}/api/memory`, { headers: { 'X-Jarvis-Token': session.token } });
     const stored = await response.json();

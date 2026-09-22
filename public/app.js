@@ -26,7 +26,7 @@ function message(role, text, error = false) {
   article.append(label, content); $('messages').append(article); article.scrollIntoView({ block: 'nearest' });
 }
 async function connect() {
-  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; connectObsidian(); }
+  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; connectObsidian(); refreshIntegrations(); }
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();
@@ -88,7 +88,7 @@ function startVoice() {
     $('voice').textContent = 'Start voice control';
     $('reactor').classList.remove('listening');
     $('core-state').textContent = 'STANDBY';
-    $('chat-status').textContent = 'Local speech is starting or unavailable. Retry shortly.';
+    $('chat-status').textContent = session?.localSpeechError || 'Local speech is starting or unavailable. Retry shortly.';
     return;
   }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -130,7 +130,7 @@ $('voice').onclick = async () => {
       if (!response.ok) throw new Error('Cannot connect to the local speech service.');
       session = await response.json();
       if (/Electron\//.test(navigator.userAgent) && !session.localSpeechReady) {
-        $('chat-status').textContent = 'Local speech is still starting or unavailable. Retry shortly; browser dictation is unavailable in this desktop app.';
+        $('chat-status').textContent = `${session.localSpeechError || 'Local speech is still starting or unavailable. Retry shortly.'} Browser dictation is unavailable in this desktop app.`;
         return;
       }
     } catch (error) { $('chat-status').textContent = error.message; return; }
@@ -268,6 +268,32 @@ async function connectObsidian() {
   try { const response = await fetch('/api/obsidian', { headers: { 'X-Jarvis-Token': session.token } }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('obsidian-status').textContent = `OBSIDIAN READY · ${data.notes.length} NOTES`; }
   catch { $('obsidian-status').textContent = 'OBSIDIAN VAULT UNAVAILABLE'; }
 }
+const localIntegrationButtons = {
+  osiris: { button: $('osiris'), name: 'OSIRIS', url: 'http://127.0.0.1:3000' },
+  godEye: { button: $('god-eye'), name: 'GOD’S EYE', url: 'http://127.0.0.1:4173' },
+};
+async function refreshIntegrations() {
+  if (!session) return;
+  try {
+    const response = await fetch('/api/integrations', { headers: { 'X-Jarvis-Token': session.token } });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error);
+    for (const [key, integration] of Object.entries(localIntegrationButtons)) {
+      const ready = data.local?.[key]?.ready === true;
+      integration.button.dataset.localReady = String(ready);
+      integration.button.title = ready ? `Open local ${integration.name}` : `${integration.name} is not running on this computer.`;
+    }
+  } catch {
+    for (const integration of Object.values(localIntegrationButtons)) integration.button.dataset.localReady = 'false';
+  }
+}
+function openLocalIntegration(key) {
+  const integration = localIntegrationButtons[key];
+  if (integration.button.dataset.localReady !== 'true') {
+    $('chat-status').textContent = `${integration.name} is offline on this computer. Start its local app, then retry.`;
+    return;
+  }
+  window.open(integration.url, '_blank', 'noopener');
+}
 $('sync-obsidian').onclick = async () => {
   if (!session) return;
   const text = $('notes').value.trim();
@@ -311,8 +337,8 @@ $('intelligence').onclick = async () => {
     }
   } catch { intelligenceList.textContent = 'Briefings are unavailable. Try again shortly.'; }
 };
-$('osiris').onclick = () => window.open('http://127.0.0.1:3000', '_blank', 'noopener');
-$('god-eye').onclick = () => window.open('http://127.0.0.1:4173', '_blank', 'noopener');
+$('osiris').onclick = () => openLocalIntegration('osiris');
+$('god-eye').onclick = () => openLocalIntegration('godEye');
 $('command').onclick = () => {
   const frame = $('command-frame');
   if (!frame.getAttribute('src')) frame.src = '/command.html';

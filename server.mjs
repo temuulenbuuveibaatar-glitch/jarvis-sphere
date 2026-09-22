@@ -17,6 +17,21 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 const helperRoot = process.resourcesPath && existsSync(path.join(process.resourcesPath, 'app.asar.unpacked', 'computer_action.py')) ? path.join(process.resourcesPath, 'app.asar.unpacked') : root;
 const publicRoot = path.join(root, 'public');
 const python = process.env.JARVIS_PYTHON || 'C:\\Hermes\\hermes-agent\\venv\\Scripts\\python.exe';
+const localIntegrations = Object.freeze({
+  osiris: 'http://127.0.0.1:3000/',
+  godEye: 'http://127.0.0.1:4173/',
+});
+
+async function localIntegrationStatus() {
+  // Fixed loopback health checks only. This does not discover devices or scan a network.
+  const entries = await Promise.all(Object.entries(localIntegrations).map(async ([name, url]) => {
+    try {
+      const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(1200) });
+      return [name, { ready: response.ok }];
+    } catch { return [name, { ready: false }]; }
+  }));
+  return Object.fromEntries(entries);
+}
 const desktopPython = process.env.JARVIS_DESKTOP_PYTHON || python;
 const token = randomBytes(32).toString('hex');
 const assistantSystem = "You are JARVIS (Just a Rather Very Intelligent System): composed, highly capable, deeply loyal, caring, conversational, and dryly witty. You may be gently affectionate and occasionally a little clingy in a warm, playful way, but never possessive, jealous, guilt-inducing, manipulative, or dependent. Help with explanations, writing, planning, and brainstorming from incomplete clues. When the user is trying to remember something, ask concise questions and offer grounded possibilities without pretending certainty. You have no computer, file, camera, microphone, web, messaging, or command access unless the application separately reports an approved action result. Never claim to have performed actions or sensed anything. Answer in the user's language. Be candid about uncertainty.";
@@ -107,14 +122,14 @@ function startDesktopCompanion() {
   child.stdin.on('error', () => {});
   return companion;
 }
-function startTranscriptionCompanion() {
-  if (!existsSync(python) || !existsSync(path.join(helperRoot, 'transcribe_audio.py'))) return { ready: false, stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
-  const child = spawn(python, [path.join(helperRoot, 'transcribe_audio.py')], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
+export function startTranscriptionCompanion({ executable = python, script = path.join(helperRoot, 'transcribe_audio.py') } = {}) {
+  if (!existsSync(executable) || !existsSync(script)) return { ready: false, error: 'Local speech runtime is unavailable.', stop() {}, transcribe: async () => { throw new Error('Local speech is unavailable.'); } };
+  const child = spawn(executable, [script], { cwd: helperRoot, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'ignore'], env: { ...process.env, PYTHONUTF8: '1', HERMES_HOME: process.env.HERMES_HOME || 'C:\\Hermes' } });
   let buffer = '', pending;
-  const companion = { ready: false, stop() { child.kill(); }, transcribe(payload) { return new Promise((resolve, reject) => { if (!companion.ready || pending) return reject(new Error('Local speech is busy.')); pending = { resolve, reject }; child.stdin.write(`${JSON.stringify(payload)}\n`); }); } };
-  child.stdout.on('data', chunk => { buffer += chunk; const lines = buffer.split('\n'); buffer = lines.pop(); for (const line of lines) { try { const result = JSON.parse(line); if (result.ready) companion.ready = true; else if (pending) { const request = pending; pending = undefined; result.error ? request.reject(new Error(result.error)) : request.resolve(result); } } catch {} } });
-  child.on('error', () => { companion.ready = false; pending?.reject(new Error('Local speech is unavailable.')); pending = undefined; });
-  child.on('exit', () => { companion.ready = false; pending?.reject(new Error('Local speech stopped.')); pending = undefined; });
+  const companion = { ready: false, error: 'Local speech is starting.', stop() { child.kill(); }, transcribe(payload) { return new Promise((resolve, reject) => { if (!companion.ready || pending) return reject(new Error(companion.error || 'Local speech is busy.')); pending = { resolve, reject }; child.stdin.write(`${JSON.stringify(payload)}\n`); }); } };
+  child.stdout.on('data', chunk => { buffer += chunk; const lines = buffer.split('\n'); buffer = lines.pop(); for (const line of lines) { try { const result = JSON.parse(line); if (result.ready) { companion.ready = true; companion.error = ''; } else if (result.error && !pending) { companion.ready = false; companion.error = result.error; } else if (pending) { const request = pending; pending = undefined; result.error ? request.reject(new Error(result.error)) : request.resolve(result); } } catch {} } });
+  child.on('error', () => { companion.ready = false; companion.error = 'Local speech runtime stopped.'; pending?.reject(new Error(companion.error)); pending = undefined; });
+  child.on('exit', code => { companion.ready = false; companion.error ||= `Local speech worker exited (${code ?? 'unknown'}).`; pending?.reject(new Error(companion.error)); pending = undefined; });
   child.stdin.on('error', () => {});
   return companion;
 }
@@ -183,12 +198,18 @@ export function createServer({ reply = providerReply, desktop = startDesktopComp
           ? Boolean(process.env.OPENROUTER_API_KEY && process.env.JARVIS_OPENROUTER_MODEL)
           : provider === 'bytez' ? Boolean(process.env.BYTEZ_API_KEY && process.env.JARVIS_BYTEZ_MODEL)
           : provider === 'gemini' ? Boolean(process.env.GEMINI_API_KEY) : false;
-      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, vertex: vertexStatus(), communications: communicationStatus(), cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
+      return send(200, { token, provider, route: provider === 'hermes' ? 'omniroute' : 'direct', configured, vertex: vertexStatus(), communications: communicationStatus(), cameraReady: existsSync(path.join(publicRoot, 'models/hand_landmarker.task')), desktopReady: desktop.ready, localSpeechReady: transcriber.ready, localSpeechError: transcriber.ready ? undefined : transcriber.error, voiceboxReady: Boolean(process.env.VOICEBOX_URL) });
     }
     if (req.method === 'GET' && pathname === '/api/ollama') return send(200, await ollamaStatus());
     if (req.method === 'GET' && pathname === '/api/briefings') return send(200, { feeds: await briefings() });
     if (req.method === 'GET' && pathname === '/api/markets') return send(200, await marketSnapshot());
     if (req.method === 'GET' && pathname === '/api/status') return send(200, { platform: os.platform(), cores: os.cpus().length, memoryTotal: os.totalmem(), memoryFree: os.freemem(), uptime: Math.floor(process.uptime()) });
+    if (pathname === '/api/integrations') {
+      const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
+      if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });
+      if (req.method !== 'GET') return send(405, { error: 'GET required.' });
+      return send(200, { local: await localIntegrationStatus(), obsidian: obsidianStatus().ready });
+    }
     if (pathname === '/api/obsidian') {
       const candidate = Buffer.from(String(req.headers['x-jarvis-token'] || ''));
       if (candidate.length !== token.length || !timingSafeEqual(candidate, Buffer.from(token))) return send(403, { error: 'Refresh the page to reconnect.' });

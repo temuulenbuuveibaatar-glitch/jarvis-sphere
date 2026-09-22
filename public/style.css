@@ -10,6 +10,7 @@
 header{background:linear-gradient(90deg,#030609 0%,#07131a 54%,#030609 100%);box-shadow:inset 0 -1px 0 #1a3d4a}
 .header-right .text-button{min-height:34px;padding:0 4px;color:#8bb9c7;font:10px var(--mono);letter-spacing:1px}
 .header-right .text-button:hover{color:#e4f9ff;text-shadow:0 0 14px #4cd8ff88}
+.header-right .text-button[data-local-ready="false"]{color:var(--amber)}
 .header-right .text-button:active,.drawer-toolbar button:active,.secondary:active,.voice-control:active{transform:scale(.98)}
 .drawer-toolbar button,.secondary{transition:transform 140ms var(--motion-out),background-color 180ms var(--motion-out),border-color 180ms var(--motion-out),color 180ms var(--motion-out)}
 .drawer-toolbar button:hover{transform:translateY(-2px);border-color:#55d8ff;background:#0c202a;color:#e7fbff}

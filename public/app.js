@@ -11,7 +11,7 @@ uiMode.id = 'ui-mode'; uiMode.className = 'text-button'; uiMode.type = 'button';
 document.querySelector('.header-right')?.insertBefore(uiMode, $('fullscreen'));
 function setUiMode(mode, persist = true) {
   const sphere = mode !== 'command';
-  if (sphereTheme) sphereTheme.disabled = false;
+  if (sphereTheme) sphereTheme.disabled = !sphere;
   document.body.dataset.uiMode = sphere ? 'sphere' : 'command';
   uiMode.textContent = sphere ? 'COMMAND UI' : 'SPHERE UI';
   uiMode.setAttribute('aria-pressed', String(!sphere));

@@ -1,24 +1,13 @@
 import { gesturesFromHands } from './gestures.js';
 import { ClapDetector } from './claps.js';
 const $ = id => document.getElementById(id);
-let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, localRecorder, localSpeechStream, localSpeechTimer, localTranscribing = false, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer;
+let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, localRecorder, localSpeechStream, localSpeechTimer, localTranscribing = false, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer, pendingChatAction;
 let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = false, frameTimer, workerReady = false, pinchStarted = 0, latched = false, hover, smooth, primaryHand, sphereHand, sphereSpan, desktopArmed = false, desktopGeneration = 0, desktopLast = 0, scrollAnchor;
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
-const sphereTheme = document.querySelector('link[href^="/sphere.css"]');
-const uiMode = document.createElement('button');
-uiMode.id = 'ui-mode'; uiMode.className = 'text-button'; uiMode.type = 'button'; uiMode.setAttribute('aria-label', 'Switch interface mode');
-document.querySelector('.header-right')?.insertBefore(uiMode, $('fullscreen'));
-function setUiMode(mode, persist = true) {
-  const sphere = mode !== 'command';
-  if (sphereTheme) sphereTheme.disabled = !sphere;
-  document.body.dataset.uiMode = sphere ? 'sphere' : 'command';
-  uiMode.textContent = sphere ? 'COMMAND UI' : 'SPHERE UI';
-  uiMode.setAttribute('aria-pressed', String(!sphere));
-  if (persist) writeLocal('jarvis.ui-mode', sphere ? 'sphere' : 'command');
-}
-uiMode.onclick = () => setUiMode(document.body.dataset.uiMode === 'sphere' ? 'command' : 'sphere');
-setUiMode(readLocal('jarvis.ui-mode') || 'sphere', false);
+const sphereTheme = document.getElementById('sphere-theme');
+if (sphereTheme) sphereTheme.disabled = true;
+document.body.dataset.uiMode = 'command';
 function message(role, text, error = false) {
   const article = document.createElement('article'); article.className = `message ${role}${error ? ' error' : ''}`;
   const label = document.createElement('span'); label.className = 'message-label'; label.textContent = role === 'user' ? 'YOU' : 'JARVIS';
@@ -30,10 +19,49 @@ async function connect() {
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();
+function localActionFromText(text) {
+  let match;
+  if ((match = text.match(/^(?:send|post)(?: a message)?(?: to)? slack[:\s]+(.+)/i))) return { action: 'slack_message', text: match[1].trim() };
+  if ((match = text.match(/^(?:send|post)(?: a message)?(?: to)? discord[:\s]+(.+)/i))) return { action: 'discord_message', text: match[1].trim() };
+  if ((match = text.match(/^open (?:the )?(?:website|url)\s+(https?:\/\/\S+)/i))) return { action: 'open_url', url: match[1] };
+  if ((match = text.match(/^open (?:the )?app\s+(.+)/i))) return { action: 'open_app', path: match[1].trim() };
+  if ((match = text.match(/^find (?:a )?files?\s+(.+)/i))) return { action: 'find', query: match[1].trim() };
+  if ((match = text.match(/^run (?:the )?command\s+(.+)/i))) return { action: 'run_command', command: match[1].match(/(?:[^\s"]+|"[^"]*")+/g)?.map(part => part.replaceAll('"', '')) || [] };
+  return null;
+}
+function describeLocalAction(action) {
+  if (action.action === 'slack_message') return `send this to Slack: “${action.text}”`;
+  if (action.action === 'discord_message') return `send this to Discord: “${action.text}”`;
+  if (action.action === 'open_url') return `open ${action.url}`;
+  if (action.action === 'open_app') return `open ${action.path}`;
+  if (action.action === 'find') return `find files matching “${action.query}”`;
+  return `run ${action.command.join(' ')}`;
+}
+async function handleLocalChatAction(text) {
+  if (/^(?:cancel|never mind)$/i.test(text) && pendingChatAction) {
+    message('user', text); pendingChatAction = null; message('assistant', 'Cancelled.'); return true;
+  }
+  if (/^(?:confirm|yes,? do it|run it)$/i.test(text) && pendingChatAction) {
+    const action = pendingChatAction; pendingChatAction = null; message('user', text); sending = true; $('send').disabled = true;
+    $('core-state').textContent = 'EXECUTING'; $('core-caption').textContent = describeLocalAction(action); $('chat-status').textContent = 'Running approved local action…';
+    try {
+      const response = await fetch('/api/computer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(action) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Action failed.');
+      const result = [data.message, data.output, data.results?.join('\n')].filter(Boolean).join('\n\n') || 'Done.'; message('assistant', result); $('chat-status').textContent = 'Local action completed';
+    } catch (error) { message('assistant', error.message || 'Action failed.', true); $('chat-status').textContent = 'Local action failed'; }
+    finally { sending = false; $('send').disabled = false; $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; }
+    return true;
+  }
+  const action = localActionFromText(text);
+  if (!action) return false;
+  pendingChatAction = action; message('user', text); message('assistant', `Ready to ${describeLocalAction(action)}. Say “confirm” to proceed or “cancel” to stop.`); $('chat-status').textContent = 'Waiting for confirmation in this conversation';
+  return true;
+}
 async function send(event) {
   event.preventDefault(); const text = $('prompt').value.trim();
   if (!text || sending) return;
   if (!session) { $('chat-status').textContent = 'Reconnect before sending.'; await connect(); return; }
+  if (await handleLocalChatAction(text)) { $('prompt').value = ''; return; }
   sending = true; awake = false; clearTimeout(wakeTimer); recognition?.stop(); $('send').disabled = true; $('prompt').value = ''; message('user', text);
   const pending = [...history.slice(-14), { role: 'user', content: text }];
   while (pending.length > 1 && new TextEncoder().encode(JSON.stringify({ messages: pending })).length > 30000) pending.splice(0, 2);
@@ -473,9 +501,9 @@ $('approve-computer').onclick = async () => {
 const toolbar = document.createElement('nav');
 toolbar.className = 'drawer-toolbar';
 toolbar.setAttribute('aria-label', 'Controls');
-for (const [name, label] of [['chat','Conversation'],['notes','Memory'],['air','Air touch'],['computer','Computer']]) {
+for (const [name, label] of [['chat','Conversation'],['notes','Memory'],['air','Air touch']]) {
   const button = document.createElement('button'); button.textContent = label;
-  button.onclick = () => { if (name === 'computer') $('computer-dialog').showModal(); else document.body.dataset.drawer = document.body.dataset.drawer === name ? '' : name; };
+  button.onclick = () => { document.body.dataset.drawer = document.body.dataset.drawer === name ? '' : name; };
   toolbar.append(button);
 }
 document.body.append(toolbar);

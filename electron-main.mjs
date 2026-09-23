@@ -1,6 +1,9 @@
 import { app, BrowserWindow, shell, session } from 'electron';
+import { rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 let server;
+const runtimeFile = path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'jarvis-sphere-runtime.json');
 const workerMode = process.argv.includes('--agent-worker');
 async function startServer() {
   const { createServer } = await import('./server.mjs');
@@ -13,6 +16,7 @@ async function createWindow() {
   process.env.JARVIS_OBSIDIAN_VAULT ||= 'C:\\jarvis';
   process.env.JARVIS_DATA_DIR ||= 'C:\\jarvis\\.jarvis';
   const port = await startServer();
+  await writeFile(runtimeFile, JSON.stringify({ port, pid: process.pid }), { mode: 0o600 });
   const window = new BrowserWindow({ width: 1440, height: 920, minWidth: 980, minHeight: 680, backgroundColor: '#030609', webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
   window.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
   window.webContents.on('will-navigate', event => event.preventDefault());
@@ -34,4 +38,4 @@ app.whenReady().then(async () => {
 }).catch(error => { console.error(error); app.quit(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('before-quit', () => server?.close());
+app.on('before-quit', () => { server?.close(); rm(runtimeFile, { force: true }).catch(() => {}); });

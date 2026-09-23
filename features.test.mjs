@@ -26,7 +26,6 @@ test('both interfaces use the local transcription endpoint and command launcher 
   assert.ok(sphere.includes("if (/Electron\\//.test(navigator.userAgent))"));
   assert.match(sphere, /session\?\.localSpeechReady\) return startLocalVoice/);
 });
-
 test('transcription companion reports startup failures instead of claiming readiness', async () => {
   const { startTranscriptionCompanion } = await import(`./server.mjs?voice-test=${Date.now()}`);
   const companion = startTranscriptionCompanion({ executable: 'C:\\missing-python.exe' });
@@ -102,10 +101,12 @@ test('agent project tracking is explicitly scoped and Telegram remains credentia
   const agent = await import(`./agent.mjs?test=${Date.now()}`);
   const saved = agent.addProject(project);
   assert.equal(saved.path, project);
-  assert.equal(agent.listProjects().length, 1);
-  assert.equal(agent.scanProjects()[0].path, project);
+  assert.ok(agent.listProjects().some(item => item.path === project));
+  assert.ok(agent.scanProjects().some(item => item.path === project));
   assert.throws(() => agent.addProject(path.parse(project).root), /drive root/);
+  agent.removeProject(saved.id);
   const communications = await import(`./communications.mjs?test=${Date.now()}`);
   await assert.rejects(() => communications.sendChannelMessage('telegram', 'Hello.'), /Telegram bot token/);
   delete process.env.JARVIS_DATA_DIR;
 });
+

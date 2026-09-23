@@ -347,24 +347,76 @@ $('command').onclick = () => {
 $('close-command').onclick = () => $('command-dialog').close();
 $('agent').onclick = () => { $('agent-dialog').showModal(); loadAgentProjects(); };
 $('close-agent').onclick = () => $('agent-dialog').close();
+const agentRequest = async body => {
+  if (!session) throw new Error('Reconnect before using the agent workspace.');
+  const response = await fetch('/api/agent', body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(body) } : { headers: { 'X-Jarvis-Token': session.token } });
+  const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Agent workspace unavailable.'); return data;
+};
+const agentText = value => value == null || value === '' ? '—' : String(value);
+function renderAgentProjects(projects) {
+  const target = $('agent-projects');
+  target.replaceChildren(...projects.map(project => {
+    const item = document.createElement('article'); item.className = 'agent-project';
+    const heading = document.createElement('div'); heading.className = 'agent-project-heading';
+    const title = document.createElement('strong'); title.textContent = project.name || project.path;
+    const state = document.createElement('span'); state.className = `agent-state ${project.enabled === false ? 'paused' : ''}`; state.textContent = project.enabled === false ? 'PAUSED' : 'ACTIVE';
+    heading.append(title, state);
+    const detail = document.createElement('small'); detail.textContent = `${agentText(project.path)}\nEvery ${agentText(project.scheduleMinutes || project.schedule_minutes || 60)} minutes · ${agentText(project.instruction || project.taskInstruction || 'No task instruction saved.')}`;
+    const actions = document.createElement('div'); actions.className = 'agent-project-actions';
+    const run = document.createElement('button'); run.type = 'button'; run.className = 'secondary'; run.textContent = 'Run now'; run.onclick = async () => { run.disabled = true; try { await agentRequest({ action: 'run_project', id: project.id }); await loadAgentProjects(); } catch (error) { $('agent-channel-status').textContent = error.message; } finally { run.disabled = false; } };
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button'; remove.textContent = 'Remove'; remove.onclick = async () => { remove.disabled = true; try { await agentRequest({ action: 'remove_project', id: project.id }); await loadAgentProjects(); } catch (error) { $('agent-channel-status').textContent = error.message; } finally { remove.disabled = false; } };
+    actions.append(run, remove); item.append(heading, detail, actions); return item;
+  }));
+  if (!projects.length) target.textContent = 'No local projects registered.';
+}
+function renderAgentJobs(jobs) {
+  const target = $('agent-jobs');
+  target.replaceChildren(...jobs.slice(0, 12).map(job => {
+    const item = document.createElement('article'); item.className = 'agent-job';
+    const title = document.createElement('strong'); title.textContent = job.projectName || job.project_name || 'JARVIS job';
+    const detail = document.createElement('small'); detail.textContent = `${agentText(job.status).toUpperCase()} · ${agentText(job.finishedAt || job.finished_at || job.startedAt || job.started_at)}${job.deploymentUrl || job.deployment_url ? `\n${job.deploymentUrl || job.deployment_url}` : ''}`;
+    item.append(title, detail); return item;
+  }));
+  if (!jobs.length) target.textContent = 'No jobs have run yet.';
+}
 async function loadAgentProjects(scan = false) {
-  if (!session) return;
   try {
-    const response = await fetch('/api/agent', scan ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'scan_projects' }) } : { headers: { 'X-Jarvis-Token': session.token } });
-    const data = await response.json(); if (!response.ok) throw new Error(data.error);
-    const projects = data.projects || []; $('agent-projects').replaceChildren(...projects.map(project => { const item = document.createElement('article'); item.className = 'agent-project'; const title = document.createElement('strong'); title.textContent = project.name; const detail = document.createElement('small'); detail.textContent = `${project.path}\n${project.summary || project.lastSummary || ''}`; item.append(title, detail); return item; }));
-    if (!projects.length) $('agent-projects').textContent = 'No local projects added.';
-    const channels = data.communications || session.communications || {}; $('agent-channel-status').textContent = `Alerts: Slack ${channels.slack ? 'ready' : 'needs setup'} · Discord ${channels.discord ? 'ready' : 'needs setup'} · Telegram ${channels.telegram ? 'ready' : 'needs setup'}`;
+    const data = await agentRequest(scan ? { action: 'scan_projects' } : null);
+    const projects = data.projects || []; renderAgentProjects(projects); renderAgentJobs(data.jobs || data.history || []);
+    const channels = data.communications || session?.communications || {};
+    const notificationText = `Slack ${channels.slack ? 'ready' : 'needs setup'} · Discord ${channels.discord ? 'ready' : 'needs setup'}`;
+    $('agent-channel-status').textContent = `Alerts: ${notificationText}. Webhook values stay in local environment variables.`;
+    $('agent-notification-health').textContent = notificationText;
+    const current = data.currentJob || data.current_job;
+    $('agent-current-task').textContent = current ? `${current.projectName || current.project_name || 'JARVIS'} · ${current.status || 'running'}` : 'No active job';
+    const vault = data.vault || {}; $('agent-daily-path').textContent = vault.daily || 'C:\\jarvis\\01 Daily'; $('agent-research-path').textContent = vault.research || 'C:\\jarvis\\04 Research';
+    const killSwitch = data.killSwitch ?? data.kill_switch;
+    if (typeof killSwitch === 'boolean') $('agent-kill-switch').checked = !killSwitch;
+    if (data.prompt && document.activeElement !== $('agent-prompt')) $('agent-prompt').value = data.prompt;
   } catch (error) { $('agent-projects').textContent = error.message || 'Agent workspace unavailable.'; }
 }
-$('add-agent-project').onclick = async () => {
-  const projectPath = $('agent-project-path').value.trim(); if (!projectPath || !session) return;
-  $('add-agent-project').disabled = true;
-  try { const response = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'add_project', path: projectPath }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('agent-project-path').value = ''; await loadAgentProjects(); }
-  catch (error) { $('agent-projects').textContent = error.message || 'Could not add project.'; }
-  finally { $('add-agent-project').disabled = false; }
+$('agent-project-form').onsubmit = async event => {
+  event.preventDefault(); const path = $('agent-project-path').value.trim(); if (!path) return;
+  const button = $('add-agent-project'); button.disabled = true;
+  try {
+    await agentRequest({ action: 'add_project', path, instruction: $('agent-project-instruction').value.trim(), scheduleMinutes: Number($('agent-project-schedule').value) || 60, taskCommand: $('agent-project-command').value.trim(), deployCommand: $('agent-project-deploy').value.trim() });
+    event.currentTarget.reset(); $('agent-project-schedule').value = '60'; await loadAgentProjects();
+  } catch (error) { $('agent-channel-status').textContent = error.message || 'Could not register project.'; }
+  finally { button.disabled = false; }
 };
 $('scan-agent-projects').onclick = () => loadAgentProjects(true);
+$('agent-kill-switch').onchange = async event => {
+  const enabled = event.currentTarget.checked; event.currentTarget.disabled = true;
+  try { await agentRequest({ action: 'set_kill_switch', enabled: !enabled }); await loadAgentProjects(); }
+  catch (error) { event.currentTarget.checked = !enabled; $('agent-channel-status').textContent = error.message || 'Could not update automation.'; }
+  finally { event.currentTarget.disabled = false; }
+};
+$('save-agent-prompt').onclick = async () => {
+  const button = $('save-agent-prompt'); button.disabled = true;
+  try { await agentRequest({ action: 'set_prompt', prompt: $('agent-prompt').value.trim() }); await loadAgentProjects(); }
+  catch (error) { $('agent-channel-status').textContent = error.message || 'Could not save the operating prompt.'; }
+  finally { button.disabled = false; }
+};
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js').catch(() => {});
 import './sphere.js';
 let briefingFeeds;

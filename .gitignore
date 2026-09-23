@@ -6,6 +6,7 @@ public/models/
 __pycache__/
 .playwright-cli/
 dist/
+release-*/
 macos-package/
 
 .vercel

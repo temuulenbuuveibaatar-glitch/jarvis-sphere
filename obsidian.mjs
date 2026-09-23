@@ -2,7 +2,8 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import path from 'node:path';
 import os from 'node:os';
 
-const vaultRoot = path.resolve(process.env.JARVIS_OBSIDIAN_VAULT || path.join(os.homedir(), 'Documents', 'JARVIS Vault'));
+// The portable default keeps JARVIS notes in the local-first vault the desktop setup creates.
+const vaultRoot = path.resolve(process.env.JARVIS_OBSIDIAN_VAULT || (process.platform === 'win32' ? 'C:\\jarvis' : path.join(os.homedir(), 'jarvis')));
 
 function notePath(value) {
   if (typeof value !== 'string' || !value || value.length > 180 || !/^[a-zA-Z0-9 _./-]+\.md$/.test(value)) throw new Error('Invalid Obsidian note path.');

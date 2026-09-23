@@ -11,7 +11,7 @@ function apiConfig(kind) {
   if (kind === 'slack') {
     const token = process.env.JARVIS_SLACK_BOT_TOKEN || process.env.JARVIS_SLACK_ACCESS_TOKEN;
     const channel = process.env.JARVIS_SLACK_CHANNEL_ID;
-    if (token && channel && /^xox[baprs]-/.test(token) && /^[A-Z0-9_-]+$/i.test(channel)) return { token, channel };
+    if (token && channel && /^(?:xox[baprs]-|xoxe\.)/.test(token) && /^[A-Z0-9_-]+$/i.test(channel)) return { token, channel };
   }
   if (kind === 'discord') {
     const token = process.env.JARVIS_DISCORD_BOT_TOKEN;

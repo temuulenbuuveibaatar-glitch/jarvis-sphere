@@ -1,0 +1,39 @@
+appId: com.jarvis.cloudlite
+productName: JARVIS Cloud Lite
+artifactName: JARVIS-Cloud-Lite-${version}-${arch}.${ext}
+asar: true
+directories:
+  output: dist/cloud-lite
+extraMetadata:
+  name: jarvis-cloud-lite
+  productName: JARVIS Cloud Lite
+  main: cloud-lite-main.mjs
+files:
+  - "**/*"
+  - "!dist{,/**}"
+  - "!release{,/**}"
+  - "!release-*{,/**}"
+  - "!.git{,/**}"
+  - "!.playwright-cli{,/**}"
+  - "!*.test.mjs"
+  - "!tests{,/**}"
+  - "!scripts{,/**}"
+  - "!macos{,/**}"
+  - "!*.py"
+  - "!public/models{,/**}"
+  - "!public/vendor{,/**}"
+  - "!public/hand-worker.js"
+  - "!node_modules/@mediapipe{,/**}"
+win:
+  target: nsis
+  artifactName: JARVIS-Cloud-Lite-Setup-${version}-${arch}.${ext}
+mac:
+  target: [dmg, zip]
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  notarize: true
+  artifactName: JARVIS-Cloud-Lite-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const vaultRoot = process.env.JARVIS_OBSIDIAN_VAULT || 'C:\\jarvis';
+export const vaultRoot = process.env.JARVIS_OBSIDIAN_VAULT || (process.platform === 'win32' ? 'C:\\jarvis' : path.join(os.homedir(), 'Documents', 'JARVIS'));
 export const dataRoot = process.env.JARVIS_DATA_DIR || path.join(vaultRoot, '.jarvis');
 mkdirSync(dataRoot, { recursive: true });
 export const databasePath = path.join(dataRoot, 'jarvis.sqlite');
@@ -24,6 +24,20 @@ db.exec(`PRAGMA journal_mode=WAL;
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS transcripts_conversation_created ON transcripts(conversation_id, id DESC);
+  CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+    content, conversation_id UNINDEXED, role UNINDEXED,
+    content='transcripts', content_rowid='id', tokenize='unicode61'
+  );
+  CREATE TRIGGER IF NOT EXISTS transcripts_fts_insert AFTER INSERT ON transcripts BEGIN
+    INSERT INTO transcripts_fts(rowid,content,conversation_id,role) VALUES (new.id,new.content,new.conversation_id,new.role);
+  END;
+  CREATE TRIGGER IF NOT EXISTS transcripts_fts_delete AFTER DELETE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts,rowid,content,conversation_id,role) VALUES ('delete',old.id,old.content,old.conversation_id,old.role);
+  END;
+  CREATE TRIGGER IF NOT EXISTS transcripts_fts_update AFTER UPDATE ON transcripts BEGIN
+    INSERT INTO transcripts_fts(transcripts_fts,rowid,content,conversation_id,role) VALUES ('delete',old.id,old.content,old.conversation_id,old.role);
+    INSERT INTO transcripts_fts(rowid,content,conversation_id,role) VALUES (new.id,new.content,new.conversation_id,new.role);
+  END;
   CREATE TABLE IF NOT EXISTS agent_projects (
     id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1, instruction TEXT NOT NULL DEFAULT '', schedule_minutes INTEGER NOT NULL DEFAULT 0 CHECK(schedule_minutes BETWEEN 0 AND 10080),
@@ -38,6 +52,18 @@ db.exec(`PRAGMA journal_mode=WAL;
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS agent_jobs_project_created ON agent_jobs(project_id, id DESC);
+  CREATE TABLE IF NOT EXISTS activity_events (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER REFERENCES agent_jobs(id) ON DELETE CASCADE,
+    conversation_id TEXT NOT NULL DEFAULT 'default',
+    kind TEXT NOT NULL CHECK(length(kind) BETWEEN 1 AND 80),
+    status TEXT NOT NULL DEFAULT '' CHECK(length(status) <= 40),
+    summary TEXT NOT NULL DEFAULT '' CHECK(length(summary) <= 2000),
+    detail_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS activity_events_job_created ON activity_events(job_id, id DESC);
+  CREATE INDEX IF NOT EXISTS activity_events_conversation_created ON activity_events(conversation_id, id DESC);
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY, job_id INTEGER REFERENCES agent_jobs(id) ON DELETE SET NULL,
     channel TEXT NOT NULL CHECK(channel IN ('slack','discord')), event TEXT NOT NULL,
@@ -48,6 +74,18 @@ db.exec(`PRAGMA journal_mode=WAL;
   CREATE TABLE IF NOT EXISTS agent_settings (
     key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );`);
+
+if (!db.prepare("SELECT 1 FROM agent_settings WHERE key='transcripts_fts_v1'").get()) {
+  db.exec('BEGIN');
+  try {
+    db.exec("INSERT INTO transcripts_fts(transcripts_fts) VALUES ('rebuild')");
+    db.prepare("INSERT INTO agent_settings(key,value) VALUES ('transcripts_fts_v1','complete')").run();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 
 function tableExists(database, table) {
   return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));

@@ -1,8 +1,9 @@
 import { gesturesFromHands } from './gestures.js';
 import { ClapDetector } from './claps.js';
+import { openSpatialWorkspace } from './spatial.js';
 const $ = id => document.getElementById(id);
-let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, localRecorder, localSpeechStream, localSpeechTimer, localTranscribing = false, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer, pendingChatAction;
-let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = false, frameTimer, workerReady = false, pinchStarted = 0, latched = false, hover, smooth, primaryHand, sphereHand, sphereSpan, desktopArmed = false, desktopGeneration = 0, desktopLast = 0, scrollAnchor;
+let session, history = [], sending = false, controller, speechEnabled = false, voiceMode = false, awake = false, recognition, localRecorder, localSpeechStream, localSpeechTimer, localTranscribing = false, wakeStream, wakeContext, wakeAnalyser, wakeFrame, lastClap = 0, wakeTimer;
+let stream, worker, cameraGeneration = 0, cameraStarting = false, frameBusy = false, frameTimer, workerReady = false, pinchStarted = 0, latched = false, hover, smooth, primaryHand, sphereHand, sphereSpan, desktopArmed = false, desktopGeneration = 0, desktopMoveLast = 0, desktopScrollLast = 0, sphereMoveLast = 0, sphereZoomLast = 0, clickLast = 0, scrollAnchor;
 const readLocal = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
 const sphereTheme = document.getElementById('sphere-theme');
@@ -15,10 +16,19 @@ function message(role, text, error = false) {
   article.append(label, content); $('messages').append(article); article.scrollIntoView({ block: 'nearest' });
 }
 async function connect() {
-  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; connectObsidian(); refreshIntegrations(); }
+  try { const response = await fetch('/api/session'); if (!response.ok) throw new Error(); session = await response.json(); const label = session.provider === 'openrouter' ? 'OpenRouter' : session.provider === 'bytez' ? 'Bytez' : session.provider === 'gemini' ? 'Gemini' : session.provider === 'omniroute' ? 'OmniRoute' : 'Hermes'; $('provider-name').textContent = session.route === 'omniroute' ? 'HERMES · OMNIROUTE' : label.toUpperCase(); $('chat-status').textContent = session.configured ? `${label} bridge ready · provider checked on send` : `${label} needs secure server configuration`; $('desktop-control').disabled = !session.desktopReady; if (!session.desktopReady) $('gesture-info').textContent = 'Desktop companion is unavailable. Air touch still works in JARVIS.'; if (session.localSpeechReady) document.querySelector('.core-detail').textContent = 'Local speech is ready. Wake JARVIS, then speak; audio stays on this device.'; await hydrateChat(); connectObsidian(); refreshIntegrations(); }
   catch { $('chat-status').textContent = 'Local server disconnected. Reload to reconnect.'; }
 }
 connect();
+document.getElementById('spatial-open')?.addEventListener('click', () => openSpatialWorkspace());
+async function hydrateChat() {
+  const response = await fetch('/api/memory', { headers: { 'X-Jarvis-Token': session.token } });
+  if (!response.ok) return;
+  const transcripts = (await response.json()).transcripts || [];
+  if (!transcripts.length) return;
+  $('messages').replaceChildren(); history = transcripts.slice(-14).map(({ role, content }) => ({ role, content }));
+  for (const item of transcripts.slice(-30)) message(item.role, item.content);
+}
 function localActionFromText(text) {
   let match;
   if ((match = text.match(/^(?:send|post)(?: a message)?(?: to)? slack[:\s]+(.+)/i))) return { action: 'slack_message', text: match[1].trim() };
@@ -38,37 +48,69 @@ function describeLocalAction(action) {
   return `run ${action.command.join(' ')}`;
 }
 async function handleLocalChatAction(text) {
-  if (/^(?:cancel|never mind)$/i.test(text) && pendingChatAction) {
-    message('user', text); pendingChatAction = null; message('assistant', 'Cancelled.'); return true;
-  }
-  if (/^(?:confirm|yes,? do it|run it)$/i.test(text) && pendingChatAction) {
-    const action = pendingChatAction; pendingChatAction = null; message('user', text); sending = true; $('send').disabled = true;
-    $('core-state').textContent = 'EXECUTING'; $('core-caption').textContent = describeLocalAction(action); $('chat-status').textContent = 'Running approved local action…';
+  if (/^(?:please\s+)?(?:rollback|restore)\s+jarvis\b/i.test(text)) {
+    message('user', text); sending = true; $('send').disabled = true;
     try {
-      const response = await fetch('/api/computer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(action) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Action failed.');
-      const result = [data.message, data.output, data.results?.join('\n')].filter(Boolean).join('\n\n') || 'Done.'; message('assistant', result); $('chat-status').textContent = 'Local action completed';
-    } catch (error) { message('assistant', error.message || 'Action failed.', true); $('chat-status').textContent = 'Local action failed'; }
-    finally { sending = false; $('send').disabled = false; $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; }
+      const response = await fetch('/api/self-update', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'rollback' }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Rollback failed.');
+      message('assistant', `Restored verified build ${data.candidateId}. Restart JARVIS to use it.`);
+    } catch (error) { message('assistant', error.message || 'Rollback failed.', true); }
+    finally { sending = false; $('send').disabled = false; }
     return true;
   }
   const action = localActionFromText(text);
   if (!action) return false;
-  pendingChatAction = action; message('user', text); message('assistant', `Ready to ${describeLocalAction(action)}. Say “confirm” to proceed or “cancel” to stop.`); $('chat-status').textContent = 'Waiting for confirmation in this conversation';
+  if (action.action === 'run_command') {
+    message('user', text); message('assistant', 'For safety, open the Computer console and confirm this command before it runs.', true);
+    return true;
+  }
+  message('user', text); sending = true; $('send').disabled = true;
+  $('core-state').textContent = 'EXECUTING'; $('core-caption').textContent = describeLocalAction(action); $('chat-status').textContent = 'Running local action…';
+  try {
+    const response = await fetch('/api/computer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(action) });
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Action failed.');
+    message('assistant', [data.message, data.output, data.results?.join('\n')].filter(Boolean).join('\n\n') || 'Done.'); $('chat-status').textContent = 'Local action completed';
+  } catch (error) { message('assistant', error.message || 'Action failed.', true); $('chat-status').textContent = 'Local action failed'; }
+  finally { sending = false; $('send').disabled = false; $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; }
   return true;
+}
+function agentIntent(text) { return /^(?:please\s+)?(?:build|create|code|fix|update|refactor|test|deploy|implement|install|set\s*up|clone|monitor)\b/i.test(text); }
+async function runAgentTask(text) {
+  message('user', text); sending = true; $('send').disabled = true; $('core-state').textContent = 'WORKING'; $('chat-status').textContent = 'Starting autonomous task…';
+  const activity = document.createElement('article'); activity.className = 'message assistant activity-message'; activity.innerHTML = '<span class="message-label">JARVIS / ACTIVITY</span><p>Planning the task…</p>'; $('messages').append(activity);
+  try {
+    let response = await fetch('/api/agent-task', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ instruction: text }) });
+    let task = await response.json(); if (!response.ok) throw new Error(task.error || 'Agent task could not start.');
+    while (task.status === 'running') {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      const [taskResponse, eventResponse] = await Promise.all([
+        fetch(`/api/agent-task?id=${encodeURIComponent(task.id)}`, { headers: { 'X-Jarvis-Token': session.token } }),
+        fetch('/api/memory', { headers: { 'X-Jarvis-Token': session.token } })
+      ]);
+      task = await taskResponse.json(); if (!taskResponse.ok) throw new Error(task.error || 'Agent task status failed.');
+      if (eventResponse.ok) {
+        const events = (await eventResponse.json()).events || [], latest = events.at(-1);
+        if (latest) activity.querySelector('p').textContent = `${latest.kind.replaceAll('_', ' ')}: ${latest.summary || latest.status}`;
+      }
+    }
+    activity.remove(); if (task.status !== 'succeeded') throw new Error(task.error || 'Agent task failed.'); message('assistant', task.result || 'Task completed.'); $('chat-status').textContent = 'Autonomous task completed';
+  } catch (error) { activity.remove(); message('assistant', error.message || 'Agent task failed.', true); $('chat-status').textContent = 'Autonomous task failed'; }
+  finally { sending = false; $('send').disabled = false; $('core-state').textContent = 'STANDBY'; $('core-caption').textContent = 'Awaiting your command'; }
 }
 async function send(event) {
   event.preventDefault(); const text = $('prompt').value.trim();
   if (!text || sending) return;
   if (!session) { $('chat-status').textContent = 'Reconnect before sending.'; await connect(); return; }
   if (await handleLocalChatAction(text)) { $('prompt').value = ''; return; }
+  if (agentIntent(text)) { $('prompt').value = ''; await runAgentTask(text); return; }
   sending = true; awake = false; clearTimeout(wakeTimer); recognition?.stop(); $('send').disabled = true; $('prompt').value = ''; message('user', text);
   const pending = [...history.slice(-14), { role: 'user', content: text }];
   while (pending.length > 1 && new TextEncoder().encode(JSON.stringify({ messages: pending })).length > 30000) pending.splice(0, 2);
   $('core-state').textContent = 'THINKING'; $('core-caption').textContent = 'Working on your request'; $('reactor').classList.add('thinking'); $('chat-status').textContent = `${$('provider-name').textContent} is thinking…`;
   controller = new AbortController(); const timeout = setTimeout(() => controller?.abort(), 95000);
   try {
-    const request = () => fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ messages: pending }), signal: controller.signal });
+    const mode = /\b(?:research|investigate|look up|search the web)\b/i.test(text) ? 'research' : /\b(?:think deeply|reason carefully)\b/i.test(text) ? 'think' : 'chat';
+    const request = () => fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ messages: pending, mode, backend: mode === 'research' && session.vertex?.configured ? 'vertex' : 'configured' }), signal: controller.signal });
     let response = await request();
     if (response.status === 503) { $('chat-status').textContent = `Reconnecting to ${$('provider-name').textContent}…`; await new Promise(resolve => setTimeout(resolve, 1100)); response = await request(); }
     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.');
@@ -171,7 +213,7 @@ $('voice').onclick = async () => {
 function stopCamera(info = 'Camera off. Processing stopped.') {
   cameraGeneration++; cameraStarting = false; workerReady = false; clearTimeout(frameTimer);
   stream?.getTracks().forEach(track => track.stop()); stream = null; worker?.terminate(); worker = null; $('camera').srcObject = null;
-  frameBusy = false; smooth = null; primaryHand = null; sphereHand = null; sphereSpan = null; latched = false; pinchStarted = 0; hover?.classList.remove('air-hover'); hover = null;
+  frameBusy = false; smooth = null; primaryHand = null; sphereHand = null; sphereSpan = null; latched = false; pinchStarted = 0; desktopMoveLast = desktopScrollLast = sphereMoveLast = sphereZoomLast = clickLast = 0; hover?.classList.remove('air-hover'); hover = null;
   $('hand-cursor').hidden = true; $('camera').parentElement.classList.remove('live'); $('air-touch').textContent = 'Enable air touch ↗'; $('air-touch').disabled = false;
   $('gesture-state').textContent = 'OFFLINE'; $('gesture-info').textContent = info;
   setDesktopArmed(false);
@@ -196,7 +238,7 @@ async function setDesktopArmed(next) {
     if (!response.ok) throw new Error('Desktop control could not arm.');
     desktopGeneration = (await response.json()).generation;
   }
-  desktopArmed = Boolean(next); scrollAnchor = null;
+  desktopArmed = Boolean(next); scrollAnchor = sphereHand = sphereSpan = null;
   $('desktop-control').textContent = desktopArmed ? 'Disarm desktop control' : 'Arm desktop control';
   $('desktop-control').setAttribute('aria-pressed', desktopArmed);
   if (!desktopArmed && session) fetch('/api/desktop', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ action: 'disarm' }) }).catch(() => {});
@@ -223,25 +265,31 @@ function updateHands(hands) {
   cursor.classList.toggle('open-palm', Boolean(hand.openPalm));
 
   if (desktopArmed) {
-    if (now - desktopLast >= 35) {
-      desktopLast = now;
+    if (now - desktopMoveLast >= 35) {
+      desktopMoveLast = now;
       desktop({ action: 'move', x: hand.x, y: hand.y });
     }
   }
 
-  if (hand.pinch && sphereHand && !desktopArmed) window.jarvisSphere?.drag((hand.x - sphereHand.x) * 6, (hand.y - sphereHand.y) * 6);
-  sphereHand = { x: hand.x, y: hand.y };
+  if (!hand.pinch || desktopArmed) sphereHand = null;
+  else if (!sphereHand) sphereHand = { x: hand.x, y: hand.y };
+  else if (now - sphereMoveLast >= 35) {
+    window.jarvisSphere?.drag((hand.x - sphereHand.x) * 6, (hand.y - sphereHand.y) * 6);
+    sphereHand = { x: hand.x, y: hand.y }; sphereMoveLast = now;
+  }
   if (second) {
     const span = Math.hypot(hand.x - second.x, hand.y - second.y);
-    if (sphereSpan !== null && !desktopArmed) window.jarvisSphere?.zoom((span - sphereSpan) * 1.8);
-    sphereSpan = span;
+    if (!desktopArmed && sphereSpan !== null && now - sphereZoomLast >= 45) {
+      window.jarvisSphere?.zoom((span - sphereSpan) * 1.8);
+      sphereSpan = span; sphereZoomLast = now;
+    } else if (sphereSpan === null) sphereSpan = span;
     if (desktopArmed) {
       if (scrollAnchor === null) scrollAnchor = second.y;
       else {
         const delta = Math.round((second.y - scrollAnchor) * 900);
-        if (Math.abs(delta) >= 20 && now - desktopLast >= 45) {
+        if (Math.abs(delta) >= 20 && now - desktopScrollLast >= 45) {
           desktop({ action: 'scroll', delta: Math.max(-1200, Math.min(1200, -delta)) });
-          scrollAnchor = second.y;
+          scrollAnchor = second.y; desktopScrollLast = now;
         }
       }
     }
@@ -252,8 +300,8 @@ function updateHands(hands) {
   if (!hand.pinch) { cursor.style.setProperty('--pinch-progress', '0deg'); latched = false; pinchStarted = 0; return; }
   if (!pinchStarted) pinchStarted = now;
   const heldFor = now - pinchStarted; cursor.style.setProperty('--pinch-progress', `${Math.min(360, heldFor * 2)}deg`);
-  if (!latched && heldFor >= 160) {
-    latched = true;
+  if (!latched && heldFor >= 160 && now - clickLast >= 250) {
+    latched = true; clickLast = now;
     if (desktopArmed) desktop({ action: 'click' });
     else window.jarvisSphere?.selectAt(smooth.x, smooth.y);
   }
@@ -284,7 +332,7 @@ $('air-touch').onclick = async () => {
 };
 $('sensitivity').oninput = () => { $('sensitivity-value').value = Number($('sensitivity').value).toFixed(2); };
 $('desktop-control').onclick = async () => { if (!stream || !workerReady) { $('gesture-info').textContent = 'Enable air touch first, then arm desktop control.'; return; } try { await setDesktopArmed(!desktopArmed); $('gesture-info').textContent = desktopArmed ? 'Desktop control armed. First hand moves and pinches; second hand scrolls. Escape disarms.' : 'Desktop control disarmed.'; } catch { $('gesture-info').textContent = 'Desktop control could not arm.'; } };
-$('low-power').onchange = () => { document.body.classList.toggle('low-power', $('low-power').checked); $('low-power').parentElement.querySelector('span').textContent = $('low-power').checked ? '8 FPS' : '15 FPS'; };
+$('low-power').onchange = () => { document.body.classList.toggle('low-power', $('low-power').checked); $('low-power').parentElement.querySelector('span').textContent = $('low-power').checked ? '8 FPS' : '15 FPS'; window.jarvisSphere?.invalidate(); };
 $('low-power').onchange();
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { stopCamera(); voiceMode = false; awake = false; recognition?.stop(); stopWakeAudio(); window.speechSynthesis?.cancel(); $('voice').textContent = 'Start voice control'; setSpeech(false); document.body.dataset.drawer = ''; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { stopCamera('Camera paused while the workspace is hidden.'); voiceMode = false; recognition?.stop(); stopWakeAudio(); } });
@@ -314,11 +362,16 @@ async function refreshIntegrations() {
     for (const integration of Object.values(localIntegrationButtons)) integration.button.dataset.localReady = 'false';
   }
 }
-function openLocalIntegration(key) {
+async function openLocalIntegration(key) {
   const integration = localIntegrationButtons[key];
   if (integration.button.dataset.localReady !== 'true') {
-    $('chat-status').textContent = `${integration.name} is offline on this computer. Start its local app, then retry.`;
-    return;
+    integration.button.disabled = true; $('chat-status').textContent = `Starting ${integration.name}…`;
+    try {
+      const response = await fetch('/api/integrations', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify({ id: key, action: 'start' }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || `${integration.name} could not start.`);
+      integration.button.dataset.localReady = 'true'; $('chat-status').textContent = `${integration.name} is ready.`;
+    } catch (error) { $('chat-status').textContent = error.message || `${integration.name} is unavailable.`; integration.button.disabled = false; return; }
+    integration.button.disabled = false;
   }
   window.open(integration.url, '_blank', 'noopener');
 }
@@ -367,13 +420,13 @@ $('intelligence').onclick = async () => {
 };
 $('osiris').onclick = () => openLocalIntegration('osiris');
 $('god-eye').onclick = () => openLocalIntegration('godEye');
-$('command').onclick = () => {
+if ($('command')) $('command').onclick = () => {
   const frame = $('command-frame');
   if (!frame.getAttribute('src')) frame.src = '/command.html';
   $('command-dialog').showModal();
 };
 $('close-command').onclick = () => $('command-dialog').close();
-$('agent').onclick = () => { $('agent-dialog').showModal(); loadAgentProjects(); };
+if ($('agent')) $('agent').onclick = () => { $('agent-dialog').showModal(); loadAgentProjects(); };
 $('close-agent').onclick = () => $('agent-dialog').close();
 const agentRequest = async body => {
   if (!session) throw new Error('Reconnect before using the agent workspace.');
@@ -420,6 +473,7 @@ async function loadAgentProjects(scan = false) {
     const vault = data.vault || {}; $('agent-daily-path').textContent = vault.daily || 'C:\\jarvis\\01 Daily'; $('agent-research-path').textContent = vault.research || 'C:\\jarvis\\04 Research';
     const killSwitch = data.killSwitch ?? data.kill_switch;
     if (typeof killSwitch === 'boolean') $('agent-kill-switch').checked = !killSwitch;
+    if (typeof data.fullAccess === 'boolean') $('agent-full-access').checked = data.fullAccess;
     if (data.prompt && document.activeElement !== $('agent-prompt')) $('agent-prompt').value = data.prompt;
   } catch (error) { $('agent-projects').textContent = error.message || 'Agent workspace unavailable.'; }
 }
@@ -437,6 +491,12 @@ $('agent-kill-switch').onchange = async event => {
   const enabled = event.currentTarget.checked; event.currentTarget.disabled = true;
   try { await agentRequest({ action: 'set_kill_switch', enabled: !enabled }); await loadAgentProjects(); }
   catch (error) { event.currentTarget.checked = !enabled; $('agent-channel-status').textContent = error.message || 'Could not update automation.'; }
+  finally { event.currentTarget.disabled = false; }
+};
+$('agent-full-access').onchange = async event => {
+  const enabled = event.currentTarget.checked; event.currentTarget.disabled = true;
+  try { await agentRequest({ action: 'set_full_access', enabled }); await loadAgentProjects(); }
+  catch (error) { event.currentTarget.checked = !enabled; $('agent-channel-status').textContent = error.message || 'Could not update access mode.'; }
   finally { event.currentTarget.disabled = false; }
 };
 $('save-agent-prompt').onclick = async () => {
@@ -494,7 +554,7 @@ $('cancel-computer').onclick = () => $('approve-dialog').close();
 $('approve-computer').onclick = async () => {
   if (!pendingComputerAction || !session) return;
   $('approve-computer').disabled = true;
-  try { const response = await fetch('/api/computer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(pendingComputerAction) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('computer-result').textContent = [data.message, data.output, data.results?.join('\n')].filter(Boolean).join('\n\n'); $('approve-dialog').close(); }
+  try { const action = pendingComputerAction.action === 'run_command' ? { ...pendingComputerAction, confirmed: true } : pendingComputerAction; const response = await fetch('/api/computer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token }, body: JSON.stringify(action) }); const data = await response.json(); if (!response.ok) throw new Error(data.error); $('computer-result').textContent = [data.message, data.output, data.results?.join('\n')].filter(Boolean).join('\n\n'); $('approve-dialog').close(); }
   catch (error) { $('computer-result').textContent = error.message || 'Action failed.'; $('approve-dialog').close(); }
   finally { $('approve-computer').disabled = false; pendingComputerAction = null; }
 };

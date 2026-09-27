@@ -1,0 +1,13 @@
+document.documentElement.dataset.edition = 'cloud-lite';
+document.body.classList.add('cloud-lite');
+const brand = document.querySelector('.brand span');
+if (brand) brand.textContent = 'PERSONAL INTELLIGENCE / CLOUD LITE';
+const badge = document.querySelector('.local-badge');
+if (badge) badge.lastChild.textContent = ' / CLOUD LITE';
+const telemetry = document.querySelectorAll('.top-telemetry strong');
+if (telemetry[0]) telemetry[0].textContent = 'LIGHTWEIGHT / ONLINE';
+if (telemetry[1]) telemetry[1].textContent = 'CLOUD PROVIDER';
+const voiceBus = [...document.querySelectorAll('.telemetry div')].find(item => item.querySelector('span')?.textContent === 'VOICE BUS')?.querySelector('strong');
+if (voiceBus) voiceBus.textContent = 'BROWSER';
+const route = [...document.querySelectorAll('.telemetry div')].find(item => item.querySelector('span')?.textContent === 'ROUTE')?.querySelector('strong');
+if (route) route.textContent = 'CLOUD API';

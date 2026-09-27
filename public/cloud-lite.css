@@ -1,0 +1,4 @@
+#osiris,#god-eye,.gesture-panel,#computer-dialog,#approve-dialog,#agent-dialog,#command-dialog{display:none!important}
+body.cloud-lite .dashboard{grid-template-columns:minmax(320px,.8fr) minmax(480px,1.2fr);grid-template-areas:"core chat"}
+body.cloud-lite .local-badge{color:#9edff2}
+@media(max-width:900px){body.cloud-lite .dashboard{display:flex;flex-direction:column}}

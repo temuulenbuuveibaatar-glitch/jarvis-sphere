@@ -5,6 +5,7 @@ public/models/
 .runtime/
 __pycache__/
 .playwright-cli/
+jarvis-dashboard.png
 dist/
 release-*/
 macos-package/

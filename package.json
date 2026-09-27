@@ -5,12 +5,20 @@
   "type": "module",
   "main": "electron-main.mjs",
   "scripts": {
-    "test": "node --test *.test.mjs",
-    "dist": "electron-builder --win nsis --x64"
+    "setup": "node scripts/setup.mjs",
+    "desktop": "electron .",
+    "test": "node --test *.test.mjs tests/*.test.mjs",
+    "predist": "npm run setup",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:win": "npm run setup && electron-builder --win nsis --x64",
+    "dist:mac": "npm run setup && electron-builder --mac dmg zip --x64 --arm64",
+    "dist:lite:win": "electron-builder --config electron-builder.cloud-lite.yml --win nsis --x64",
+    "dist:lite:mac": "electron-builder --config electron-builder.cloud-lite.yml --mac dmg zip --x64 --arm64"
   },
   "dependencies": {
     "@google/genai": "^2.23.0",
-    "@mediapipe/tasks-vision": "1.0.1"
+    "@mediapipe/tasks-vision": "1.0.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "electron": "^39.2.7",
@@ -29,6 +37,7 @@
       "!release{,/**}",
       "!release-*{,/**}",
       "!dist{,/**}",
+      "!macos{,/**}",
       "!.agents{,/**}",
       "!.claude{,/**}",
       "!.claude-flow{,/**}",
@@ -40,6 +49,16 @@
     "win": {
       "target": "nsis",
       "artifactName": "JARVIS-Sphere-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "notarize": true,
+      "artifactName": "JARVIS-Sphere-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

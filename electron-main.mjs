@@ -5,6 +5,12 @@ import path from 'node:path';
 let server;
 const runtimeFile = path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'jarvis-sphere-runtime.json');
 const workerMode = process.argv.includes('--agent-worker');
+function configureLocalPaths() {
+  const vault = process.platform === 'win32' ? 'C:\\jarvis' : path.join(app.getPath('documents'), 'JARVIS');
+  process.env.JARVIS_OBSIDIAN_VAULT ||= vault;
+  process.env.JARVIS_DATA_DIR ||= path.join(vault, '.jarvis');
+  process.env.HERMES_HOME ||= process.platform === 'win32' ? 'C:\\Hermes' : path.join(app.getPath('home'), '.hermes');
+}
 async function startServer() {
   const { createServer } = await import('./server.mjs');
   return new Promise((resolve, reject) => {
@@ -13,8 +19,7 @@ async function startServer() {
   });
 }
 async function createWindow() {
-  process.env.JARVIS_OBSIDIAN_VAULT ||= 'C:\\jarvis';
-  process.env.JARVIS_DATA_DIR ||= 'C:\\jarvis\\.jarvis';
+  configureLocalPaths();
   const port = await startServer();
   await writeFile(runtimeFile, JSON.stringify({ port, pid: process.pid }), { mode: 0o600 });
   const window = new BrowserWindow({ width: 1440, height: 920, minWidth: 980, minHeight: 680, backgroundColor: '#030609', webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
@@ -24,7 +29,7 @@ async function createWindow() {
 }
 app.whenReady().then(async () => {
   if (workerMode) {
-    process.env.JARVIS_OBSIDIAN_VAULT ||= 'C:\\jarvis';
+    configureLocalPaths();
     const { runDueProjectJobs } = await import('./agent_runner.mjs');
     await runDueProjectJobs();
     app.quit();

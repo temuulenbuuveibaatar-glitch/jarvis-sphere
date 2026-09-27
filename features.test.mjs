@@ -64,7 +64,7 @@ test('local memory and reviewed channel actions stay bounded', async () => {
     const base = `http://127.0.0.1:${server.address().port}`;
     const session = await (await fetch(`${base}/api/session`)).json();
     const command = await fetch(`${base}/command.html`);
-    assert.match(command.headers.get('content-security-policy'), /frame-ancestors 'self'/);
+    assert.match(command.headers.get('content-security-policy'), /frame-ancestors 'none'/);
     assert.equal(session.localSpeechReady, true);
     const headers = { 'Content-Type': 'application/json', 'X-Jarvis-Token': session.token };
     let response = await fetch(`${base}/api/integrations`, { headers });

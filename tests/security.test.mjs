@@ -14,7 +14,8 @@ test('conversation boundary rejects injected roles and oversized input', () => {
   assert.equal(validDesktopAction({ action: 'click', shell: 'bad' }), false);
   assert.equal(validComputerAction({ action: 'open_url', url: 'https://example.com' }), true);
   assert.equal(validComputerAction({ action: 'open_url', url: 'file:///secret' }), false);
-  assert.equal(validComputerAction({ action: 'run_command', command: ['git', 'status'] }), true);
+  assert.equal(validComputerAction({ action: 'run_command', command: ['git', 'status'] }), false);
+  assert.equal(validComputerAction({ action: 'run_command', command: ['git', 'status'], confirmed: true }), true);
   assert.equal(validComputerAction({ action: 'run_command', command: 'git status' }), false);
 });
 test('Bytez uses the native request path without a Python runtime', async () => {
